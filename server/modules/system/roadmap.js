@@ -1,0 +1,26 @@
+'use strict';
+/** نطاق المشروع (القسم 4 من الدستور). status يُشتق وقت التشغيل: الوحدة المحمّلة = active وإلا planned. */
+module.exports = [
+  { id: 'company-setup',  group: 'foundation', ar: 'تأسيس الشركة والإعدادات', en: 'Company Setup & Settings' },
+  { id: 'security',       group: 'foundation', ar: 'المستخدمون والصلاحيات والأمان', en: 'Users, Permissions & Security' },
+  { id: 'fiscal-years',   group: 'foundation', ar: 'السنوات المالية', en: 'Fiscal Years' },
+  { id: 'chart-accounts', group: 'finance', ar: 'دليل الحسابات', en: 'Chart of Accounts' },
+  { id: 'journal',        group: 'finance', ar: 'القيود اليومية والحسابات العامة', en: 'Journal & General Ledger' },
+  { id: 'treasury',       group: 'finance', ar: 'الخزائن والبنوك', en: 'Cash & Banks' },
+  { id: 'parties',        group: 'finance', ar: 'العملاء والموردون', en: 'Customers & Suppliers' },
+  { id: 'settlements',    group: 'finance', ar: 'التحصيلات والسداد', en: 'Receipts & Payments' },
+  { id: 'notes',          group: 'finance', ar: 'أوراق القبض والدفع', en: 'Notes Receivable & Payable' },
+  { id: 'sales',          group: 'trade', ar: 'المبيعات والمرتجعات', en: 'Sales & Returns' },
+  { id: 'purchases',      group: 'trade', ar: 'المشتريات والمرتجعات', en: 'Purchases & Returns' },
+  { id: 'inventory',      group: 'inventory', ar: 'المخازن والأصناف', en: 'Warehouses & Items' },
+  { id: 'costing',        group: 'inventory', ar: 'محرك تقييم التكلفة (FIFO / متوسط مرجح)', en: 'Costing Engine (FIFO / Weighted Avg)' },
+  { id: 'manufacturing',  group: 'production', ar: 'التصنيع وأوامر الإنتاج', en: 'Manufacturing & Production Orders' },
+  { id: 'landed-costs',   group: 'production', ar: 'تحميل المصروفات على المشتريات والإنتاج', en: 'Landed & Production Cost Allocation' },
+  { id: 'cost-centers',   group: 'production', ar: 'مراكز التكلفة', en: 'Cost Centers' },
+  { id: 'sales-reps',     group: 'trade', ar: 'المناديب والعمولات', en: 'Sales Reps & Commissions' },
+  { id: 'fixed-assets',   group: 'assets', ar: 'الأصول الثابتة والإهلاك', en: 'Fixed Assets & Depreciation' },
+  { id: 'reports',        group: 'reports', ar: 'التقارير المالية والتشغيلية', en: 'Financial & Operational Reports' },
+  { id: 'import-export',  group: 'reports', ar: 'استيراد/تصدير Excel وPDF', en: 'Excel Import/Export & PDF' },
+  { id: 'backup-ui',      group: 'operations', ar: 'النسخ الاحتياطي والاستعادة', en: 'Backup & Restore' },
+  { id: 'system-admin',   group: 'operations', ar: 'إدارة إعدادات النظام والتشغيل', en: 'System Administration' },
+];

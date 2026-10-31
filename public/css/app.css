@@ -1,0 +1,72 @@
+:root {
+  --navy: #14284b;
+  --navy-2: #1d3868;
+  --gold: #b8923a;
+  --gold-text: #7d5f16;
+  --page: #f5f6f8;
+  --surface: #ffffff;
+  --line: #d9dde3;
+  --ink: #14202f;
+  --muted: #5b6676;
+  --ok: #1f7a4d;
+  --err: #a32626;
+  --side-w: 288px;
+  --font: "Segoe UI", Tahoma, "Noto Naskh Arabic", system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font-family: var(--font); background: var(--page); color: var(--ink); font-size: 15px; line-height: 1.6; }
+h1, h2 { margin: 0; line-height: 1.3; }
+h1 { font-size: 1.6rem; font-weight: 600; color: var(--navy); }
+h2 { font-size: 1.05rem; font-weight: 600; color: var(--navy); margin-block-end: .5rem; }
+.muted { color: var(--muted); margin: .15rem 0 0; }
+.error { color: var(--err); font-weight: 600; }
+
+.shell { display: grid; grid-template-columns: var(--side-w) 1fr; min-height: 100%; }
+
+/* الشريط الجانبي */
+.side { background: var(--navy); color: #e8edf5; display: flex; flex-direction: column; padding: 16px; gap: 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; overflow-anchor: none; }
+.logo-plate { flex: none; border-radius: 10px; overflow: hidden; border-block-end: 3px solid var(--gold); background: #cfd3d9; }
+.logo-plate img { display: block; width: 100%; height: auto; }   /* الأبعاد والنسبة كما هي */
+.nav { flex: 1 0 auto; }
+.nav-group { margin-block-end: 8px; }
+.nav-group h3 { margin: 0 0 4px; padding-inline: 10px; font-size: .78rem; font-weight: 600; color: #aebbd3; }
+.nav-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 6px; color: #f2f5fa; text-decoration: none; font-size: .88rem; line-height: 1.45; }
+.nav-item[aria-disabled="true"] { color: #8fa0bf; cursor: default; }
+.nav-item:not([aria-disabled="true"]):hover { background: var(--navy-2); }
+.nav-item:focus-visible, .btn:focus-visible, .phone:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.chip { font-size: .7rem; padding: 0 7px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+.chip.active { color: #7fe0ab; }
+.support { flex: none; border-block-start: 1px solid #2c4672; padding-block-start: 12px; font-size: .85rem; display: flex; flex-direction: column; gap: 2px; }
+.phone { color: #f3d98f; font-size: 1.1rem; font-weight: 600; text-decoration: none; letter-spacing: .03em; }
+
+/* المحتوى */
+.main { padding: 24px clamp(16px, 3vw, 40px) 48px; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.tools { display: flex; align-items: center; gap: 14px; }
+.clock { font-variant-numeric: tabular-nums; font-size: 1.5rem; font-weight: 600; color: var(--navy); }
+.btn { font: inherit; padding: 6px 14px; border: 1px solid var(--navy); background: transparent; color: var(--navy); border-radius: 6px; cursor: pointer; }
+.btn:hover { background: var(--navy); color: #fff; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 24px; margin: 0; }
+.facts div { border-inline-start: 3px solid var(--gold); padding-inline-start: 10px; }
+.facts dt { color: var(--muted); font-size: .82rem; }
+.facts dd { margin: 0; font-weight: 600; font-size: 1.05rem; }
+.facts dd.ok { color: var(--ok); }
+.facts dd.bad { color: var(--err); }
+
+.rm-group { margin-block-start: 14px; }
+.rm-group h3 { margin: 0 0 4px; font-size: .9rem; color: var(--gold-text); }
+.rm-table { width: 100%; border-collapse: collapse; }
+.rm-table td { padding: 6px 4px; border-block-end: 1px solid var(--line); }
+.rm-table td:last-child { text-align: end; width: 110px; }
+.rm-table .chip { color: var(--muted); }
+.rm-table .chip.active { color: var(--ok); }
+
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .side { position: static; height: auto; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+@media print { .side, .tools { display: none; } .shell { display: block; } }

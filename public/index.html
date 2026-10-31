@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TAYL</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="shell">
+    <aside id="side" class="side" aria-label="navigation">
+      <div class="logo-plate">
+        <img src="/assets/logo/tayl-logo-official.jfif" width="1408" height="768" alt="TAYL — Strategic Accounting | Finance | Cost Solutions">
+      </div>
+      <nav id="nav" class="nav"></nav>
+      <div class="support">
+        <span data-i18n="support.label"></span>
+        <a id="support-phone" class="phone" dir="ltr" href="tel:01123401333">01123401333</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="top">
+        <div class="hello">
+          <h1 id="greeting"></h1>
+          <p id="date" class="muted"></p>
+        </div>
+        <div class="tools">
+          <time id="clock" class="clock" dir="ltr"></time>
+          <button id="lang-toggle" class="btn" type="button"></button>
+        </div>
+      </header>
+
+      <section class="panel" aria-labelledby="status-h">
+        <h2 id="status-h" data-i18n="status.title"></h2>
+        <dl id="status" class="facts"></dl>
+        <p id="status-error" class="error" hidden></p>
+      </section>
+
+    </main>
+  </div>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
