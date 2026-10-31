@@ -54,12 +54,14 @@ function createAudit(db) {
   }
 
   /** قراءة مع فلاتر اختيارية وترقيم بالصفحات عبر beforeId. */
-  function list({ limit = 100, entityType, entityId, action, userId, beforeId } = {}) {
+  function list({ limit = 100, entityType, entityId, action, userId, userIds, beforeId } = {}) {
     const where = []; const args = [];
     if (entityType) { where.push('entity_type = ?'); args.push(entityType); }
     if (entityId != null) { where.push('entity_id = ?'); args.push(String(entityId)); }
     if (action) { where.push("action LIKE ? ESCAPE '\\'"); args.push(String(action).replace(/[\\%_]/g, '\\$&') + '%'); }
     if (userId != null) { where.push('actor_user_id = ?'); args.push(userId); }
+    // userIds: تقييد بقائمة مستخدمين (نطاق الرؤية). قائمة فارغة = لا شيء.
+    if (Array.isArray(userIds)) { where.push(userIds.length ? `actor_user_id IN (${userIds.map(() => '?').join(',')})` : '0 = 1'); args.push(...userIds); }
     if (beforeId != null) { where.push('id < ?'); args.push(beforeId); }
     const sql = `SELECT * FROM audit_log ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY id DESC LIMIT ?`;
     return db.prepare(sql).all(...args, Math.min(Math.max(1, limit | 0), 1000));

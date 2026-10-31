@@ -188,3 +188,5 @@ input:disabled, select:disabled, textarea:disabled { background: var(--surface-2
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 @media print { .side, .tools, .banner, .page-actions, .form-actions, td.actions { display: none !important; } .shell { display: block; } }
+.special-row td { background: var(--gold-soft); }
+.special-row .badge { margin-inline-start: 8px; }

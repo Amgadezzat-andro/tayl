@@ -374,5 +374,11 @@
   "val.DISPLAY_SCALE_RANGE": "Display places can't exceed commit places.",
   "val.BAD_ROUNDING": "Unknown rounding rule.",
   "val.BAD_CURRENCY": "Invalid currency code.",
-  "val.UNKNOWN_KIND": "Unknown value kind."
+  "val.UNKNOWN_KIND": "Unknown value kind.",
+  "company.baseCurrencyLocked": "The base currency is locked because approved financial data depends on it.",
+  "perm.special.users.manage_all": "Manage all users regardless of branch scope",
+  "perm.superOnly": "Super admin only",
+  "audit.action.company.base_currency.changed": "Base currency changed",
+  "err.BASE_CURRENCY_LOCKED": "The base currency can't change once approved financial data exists.",
+  "err.DECIMAL_RATE_OUT_OF_RANGE": "The rate must be between 0 and 100."
 }

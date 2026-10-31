@@ -13,7 +13,7 @@ const FIELDS = [
 ];
 const MAX_LOGO_BYTES = 512 * 1024;
 
-function toApi(row) {
+function toApi(row, lockSources = []) {
   if (!row) return null;
   const out = {};
   for (const [api, col] of FIELDS) out[api] = row[col];
@@ -21,6 +21,8 @@ function toApi(row) {
   out.logoSha256 = row.logo_sha256;
   out.createdAt = row.created_at;
   out.updatedAt = row.updated_at;
+  out.baseCurrencyLocked = lockSources.length > 0;
+  out.baseCurrencyLockedBy = lockSources;
   return out;
 }
 
@@ -59,12 +61,13 @@ function decodeLogo(data) {
   return { logo: buf, mime, sha256: crypto.createHash('sha256').update(buf).digest('hex') };
 }
 
-function createCompanyService({ db, audit }) {
+function createCompanyService({ db, audit, financialActivity }) {
   const getRow = () => db.prepare('SELECT * FROM company WHERE id = 1').get();
+  const toApiNow = (row) => toApi(row, row ? financialActivity.sources() : []);
 
   return {
     isSetUp: () => !!db.prepare('SELECT 1 FROM company WHERE id = 1').get(),
-    get: () => toApi(getRow()),
+    get: () => toApiNow(getRow()),
     validateProfile,
     decodeLogo,
 
@@ -78,16 +81,26 @@ function createCompanyService({ db, audit }) {
     update(ctx, body) {
       const data = validateProfile(body, { partial: true });
       const changes = FIELDS.filter(([api]) => api in data);
-      if (!changes.length) return toApi(getRow());
+      if (!changes.length) return toApiNow(getRow());
       return inTransaction(db, () => {
         const before = getRow();
         if (!before) throw new HttpError(409, 'SETUP_REQUIRED', 'لم يتم تأسيس الشركة بعد');
+        const currencyChange = 'baseCurrency' in data && data.baseCurrency !== before.base_currency;
+        if (currencyChange) {
+          // يُفحص داخل نفس المعاملة: بعد بدء النشاط المالي المعتمد لا تتغير العملة الأساسية.
+          const sources = financialActivity.sources();
+          if (sources.length) throw new HttpError(409, 'BASE_CURRENCY_LOCKED', 'لا يمكن تغيير العملة الأساسية بعد وجود بيانات مالية معتمدة', { sources });
+        }
         db.prepare(`UPDATE company SET ${changes.map(([, col]) => `${col} = ?`).join(', ')},
           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = 1`).run(...changes.map(([api]) => data[api]));
         const diff = {};
         for (const [api, col] of changes) if (before[col] !== data[api]) diff[api] = { from: before[col], to: data[api] };
         if (Object.keys(diff).length) audit.fromCtx(ctx, { action: 'company.updated', source: 'company-setup', entityType: 'company', entityId: 1, details: { changes: diff } });
-        return toApi(getRow());
+        if (currencyChange) {
+          audit.fromCtx(ctx, { action: 'company.base_currency.changed', source: 'company-setup', entityType: 'company', entityId: 1,
+            details: { from: before.base_currency, to: data.baseCurrency } });
+        }
+        return toApiNow(getRow());
       });
     },
 

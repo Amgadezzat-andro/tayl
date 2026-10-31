@@ -9,6 +9,12 @@ const USERNAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
 
 function createUserService({ db, audit, sessions, guard, settings, branches, throttle }) {
   const row = (id) => db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  /** المستخدم إن كان مرئيًا للمستخدم الحالي، وإلا 404 (لا نكشف وجود حساب خارج النطاق). */
+  function visibleRow(ctx, id) {
+    const u = row(id);
+    if (!u || !guard.canSee(ctx, u)) throw new HttpError(404, 'NOT_FOUND', 'المستخدم غير موجود');
+    return u;
+  }
   const roleIdsOf = (id) => db.prepare('SELECT role_id FROM user_roles WHERE user_id = ? ORDER BY role_id').all(id).map((r) => r.role_id);
   const branchIdsOf = (id) => db.prepare('SELECT branch_id FROM user_branches WHERE user_id = ? ORDER BY branch_id').all(id).map((r) => r.branch_id);
 
@@ -37,6 +43,11 @@ function createUserService({ db, audit, sessions, guard, settings, branches, thr
   function assertPassword(pw, username, field = 'password') {
     const p = passwordProblem(pw, { username, minLength: settings.get().passwordMinLength });
     if (p) throw new HttpError(400, 'VALIDATION', 'بيانات غير صالحة', { fields: { [field]: p } });
+  }
+  /** المدير محدود النطاق لا ينشئ/يعدّل مستخدمًا ليصبح خارج رؤيته (بلا فروع). */
+  function assertStaysVisible(ctx, d) {
+    if (guard.usersGlobal(ctx) || d.allBranches || d.isSuperAdmin) return;
+    if (!d.branchIds.length) throw new HttpError(400, 'VALIDATION', 'بيانات غير صالحة', { fields: { branchIds: 'REQUIRED' } });
   }
   /** يجب أن يبقى مدير عام نشط واحد على الأقل. */
   function assertNotLastSuperAdmin(id) {
@@ -81,8 +92,13 @@ function createUserService({ db, audit, sessions, guard, settings, branches, thr
 
   return {
     insert, toApi, assertPassword, USERNAME_RE,
-    list: () => db.prepare('SELECT * FROM users ORDER BY username').all().map(toApi),
-    get(id) { const u = row(id); if (!u) throw new HttpError(404, 'NOT_FOUND', 'المستخدم غير موجود'); return toApi(u); },
+    list(ctx) {
+      const ids = guard.visibleUserIds(ctx);
+      if (ids && !ids.length) return [];
+      const where = ids ? `WHERE id IN (${ids.map(() => '?').join(',')})` : '';
+      return db.prepare(`SELECT * FROM users ${where} ORDER BY username`).all(...(ids || [])).map(toApi);
+    },
+    get: (ctx, id) => toApi(visibleRow(ctx, id)),
 
     async create(ctx, body) {
       const d = validateUser(body, { partial: false });
@@ -90,6 +106,7 @@ function createUserService({ db, audit, sessions, guard, settings, branches, thr
       d.allBranches = !!d.allBranches; d.isSuperAdmin = !!d.isSuperAdmin;
       assertRolesExist(d.roleIds); assertBranchesExist(d.branchIds);
       guard.assertCanGrant(ctx, d);
+      assertStaysVisible(ctx, d);
       assertDefaultBranch(d.defaultBranchId, d);
       assertPassword(d.password, d.username);
       const hash = await hashPassword(d.password);
@@ -105,8 +122,7 @@ function createUserService({ db, audit, sessions, guard, settings, branches, thr
     update(ctx, id, body) {
       const d = validateUser(body, { partial: true });
       return inTransaction(db, () => {
-        const u = row(id);
-        if (!u) throw new HttpError(404, 'NOT_FOUND', 'المستخدم غير موجود');
+        const u = visibleRow(ctx, id);
         guard.assertCanManage(ctx, u);
         const before = toApi(u);
         const next = {
@@ -136,6 +152,7 @@ function createUserService({ db, audit, sessions, guard, settings, branches, thr
           isSuperAdmin: next.isSuperAdmin && !before.isSuperAdmin,
         });
         assertDefaultBranch(next.defaultBranchId, next);
+        assertStaysVisible(ctx, next);
 
         db.prepare(`UPDATE users SET display_name = ?, is_super_admin = ?, all_branches = ?, default_branch_id = ?,
           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)
@@ -156,8 +173,7 @@ function createUserService({ db, audit, sessions, guard, settings, branches, thr
 
     setActive(ctx, id, active) {
       return inTransaction(db, () => {
-        const u = row(id);
-        if (!u) throw new HttpError(404, 'NOT_FOUND', 'المستخدم غير موجود');
+        const u = visibleRow(ctx, id);
         if (id === ctx.user.id) throw new HttpError(403, 'SELF_MODIFICATION', 'لا يمكنك تعطيل حسابك بنفسك');
         guard.assertCanManage(ctx, u);
         if ((u.is_active === 1) === active) return toApi(u);
@@ -172,8 +188,7 @@ function createUserService({ db, audit, sessions, guard, settings, branches, thr
     /** إعادة تعيين كلمة المرور بواسطة المدير: تُنهي جلسات المستخدم وتفك القفل وتُلزمه بتغييرها. */
     async resetPassword(ctx, id, body) {
       const { password } = validator(body).secret('password', { required: true, min: 1 }).done();
-      const u0 = row(id);
-      if (!u0) throw new HttpError(404, 'NOT_FOUND', 'المستخدم غير موجود');
+      const u0 = visibleRow(ctx, id);
       if (id === ctx.user.id) throw new HttpError(403, 'SELF_MODIFICATION', 'غيّر كلمة مرورك من شاشة حسابك');
       guard.assertCanManage(ctx, u0);
       assertPassword(password, u0.username);
@@ -192,8 +207,8 @@ function createUserService({ db, audit, sessions, guard, settings, branches, thr
 
 function registerUserRoutes(router, services) {
   const { users } = services;
-  router.get('/api/users', { permission: 'users.view' }, () => users.list());
-  router.get('/api/users/:id', { permission: 'users.view' }, (ctx) => users.get(idParam(ctx.params.id)));
+  router.get('/api/users', { permission: 'users.view' }, (ctx) => users.list(ctx));
+  router.get('/api/users/:id', { permission: 'users.view' }, (ctx) => users.get(ctx, idParam(ctx.params.id)));
   router.post('/api/users', { permission: 'users.create' }, async (ctx) => users.create(ctx, await ctx.body()));
   router.put('/api/users/:id', { permission: 'users.update' }, async (ctx) => users.update(ctx, idParam(ctx.params.id), await ctx.body()));
   router.post('/api/users/:id/status', { permission: 'users.disable' }, async (ctx) => {

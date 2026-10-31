@@ -22,7 +22,8 @@ module.exports = {
 
   register(router, services) {
     services.permissions.register('security', [
-      { resource: 'users', group: 'security', actions: ['view', 'create', 'update', 'disable'] },
+      // manage_all: رؤية وإدارة كل المستخدمين بغض النظر عن نطاق الفروع — صريحة، ولا يمنحها إلا المدير العام.
+      { resource: 'users', group: 'security', actions: ['view', 'create', 'update', 'disable'], special: ['manage_all'], superOnlyGrant: ['manage_all'] },
       { resource: 'roles', group: 'security', actions: ['view', 'create', 'update', 'delete'] },
       { resource: 'audit', group: 'security', actions: ['view'] },
     ]);

@@ -4,6 +4,7 @@ const { createCompanyService, registerCompanyRoutes } = require('./company');
 const { createBranchService, registerBranchRoutes } = require('./branches');
 const { createSettingsService, registerSettingsRoutes } = require('./settings');
 const { createPrecisionService, registerPrecisionRoutes } = require('./precision');
+const { createFinancialActivity } = require('./financial-activity');
 
 /**
  * وحدة تأسيس الشركة: بيانات الشركة الوحيدة، الفروع، إعدادات النظام، سياسة الدقة الحسابية.
@@ -23,6 +24,7 @@ module.exports = {
       { resource: 'precision', group: 'system', actions: ['view', 'update'] },
     ]);
 
+    services.financialActivity = createFinancialActivity(services);
     services.company = createCompanyService(services);
     services.branches = createBranchService(services);
     services.settings = createSettingsService(services);

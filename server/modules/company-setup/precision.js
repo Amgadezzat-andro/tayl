@@ -87,7 +87,7 @@ function registerPrecisionRoutes(router, services) {
       input: decimal.canonical(v.value),
       committed: decimal.canonical(committed),
       stored: decimal.toStorage(committed, v.kind),
-      display: decimal.format(committed, v.kind, v.currency || ''),
+      display: v.kind === 'rate' ? decimal.formatPercent(committed, v.currency || '') : decimal.format(committed, v.kind, v.currency || ''),
       policy: p,
     };
   });

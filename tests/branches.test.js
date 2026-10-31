@@ -79,7 +79,7 @@ test('branches: المدير الفرعي لا يمنح فروعًا خارج ن
   assert.equal(all.body.error.code, 'BRANCH_SCOPE_EXCEEDED');
   assert.equal((await mgr.client.post('/api/users', { username: 'aa1', displayName: 'A', password: 'Aa-Pass-111', branchIds: [ids.ALX] })).status, 200);
   const giz = await makeUser(s, { username: 'gizuser', branchIds: [ids.GIZ] });
-  assert.equal((await mgr.client.post(`/api/users/${giz.id}/status`, { active: false })).body.error.code, 'BRANCH_SCOPE_EXCEEDED');
+  assert.equal((await mgr.client.post(`/api/users/${giz.id}/status`, { active: false })).body.error.code, 'NOT_FOUND');   // مراجعة 0.2.1: مستخدم فرع آخر غير مرئي أصلًا (404 لا يكشف وجوده)
 });
 
 test('branches: نطاق التقارير — فرع محدد أو جميع الفروع المصرح بها (نمط المراحل القادمة)', async (t) => {

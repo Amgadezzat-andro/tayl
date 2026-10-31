@@ -70,36 +70,69 @@ function createAccessLoader({ db, permissions }) {
 /**
  * حماية من تصعيد الصلاحيات: من ليس مديرًا عامًا لا يستطيع منح أكثر مما يملك
  * (صلاحيات أو فروع)، ولا إدارة مستخدم أقوى منه أو خارج نطاق فروعه.
+ *
+ * رؤية المستخدمين وإدارتهم مقيدة بنطاق الفروع: المستخدم المحدود يرى ويدير فقط من تقع كل فروعه داخل نطاقه
+ * (لا يرى المدير العام ولا أصحاب «جميع الفروع» ولا من بلا فروع).
+ * الاستثناء الصريح: نطاق «جميع الفروع» أو الصلاحية الخاصة users.manage_all (لا يمنحها إلا المدير العام).
  */
-function createGrantGuard({ db }) {
+const USERS_GLOBAL = 'users.manage_all';
+
+function createGrantGuard({ db, permissions }) {
   const rolePerms = (roleIds) => (roleIds.length
     ? db.prepare(`SELECT DISTINCT permission FROM role_permissions WHERE role_id IN (${roleIds.map(() => '?').join(',')})`).all(...roleIds).map((r) => r.permission)
     : []);
   const userRoleIds = (userId) => db.prepare('SELECT role_id FROM user_roles WHERE user_id = ?').all(userId).map((r) => r.role_id);
   const userBranchIds = (userId) => db.prepare('SELECT branch_id FROM user_branches WHERE user_id = ?').all(userId).map((r) => r.branch_id);
 
+  /** نطاق إدارة المستخدمين شامل؟ */
+  const usersGlobal = (ctx) => ctx.user.isSuperAdmin || ctx.access.allBranches || ctx.access.can(USERS_GLOBAL);
+
   function assertPermissionsSubset(ctx, perms) {
     if (ctx.user.isSuperAdmin) return;
+    const reserved = perms.filter((p) => permissions.superOnly(p));
+    if (reserved.length) throw new HttpError(403, 'SUPER_ADMIN_ONLY', 'هذه الصلاحية يمنحها ويديرها المدير العام فقط', { permissions: reserved });
     const extra = perms.filter((p) => !ctx.user.permissions.has(p));
     if (extra.length) throw new HttpError(403, 'PERMISSION_ESCALATION', 'لا يمكنك منح صلاحيات لا تملكها', { permissions: extra });
   }
 
+  /** هل يرى المستخدم الحالي هذا المستخدم؟ (صف من جدول users) */
+  function canSee(ctx, target) {
+    if (usersGlobal(ctx)) return true;
+    if (target.is_super_admin === 1 || target.all_branches === 1) return false;
+    const b = userBranchIds(target.id);
+    return b.length > 0 && b.every((x) => ctx.access.branchAllowed(x));
+  }
+
+  /** معرّفات المستخدمين المرئيين، أو null = الكل. يُستخدم لتصفية القوائم وسجل التدقيق في SQL. */
+  function visibleUserIds(ctx) {
+    if (usersGlobal(ctx)) return null;
+    const scope = ctx.access.branchIds();
+    return db.prepare(`SELECT u.id FROM users u WHERE u.is_super_admin = 0 AND u.all_branches = 0
+      AND EXISTS (SELECT 1 FROM user_branches ub WHERE ub.user_id = u.id)
+      AND NOT EXISTS (SELECT 1 FROM user_branches ub WHERE ub.user_id = u.id AND ub.branch_id NOT IN (${scope.map(() => '?').join(',')}))`)
+      .all(...scope).map((r) => r.id);
+  }
+
   return {
     rolePerms,
+    usersGlobal,
+    canSee,
+    visibleUserIds,
     assertPermissionsSubset,
     /** ما سيُمنح لمستخدم: أدوار + نطاق فروع + صفة المدير العام. */
     assertCanGrant(ctx, { roleIds = [], branchIds = [], allBranches = false, isSuperAdmin = false }) {
       if (ctx.user.isSuperAdmin) return;
       if (isSuperAdmin) throw new HttpError(403, 'SUPER_ADMIN_ONLY', 'هذا الإجراء للمدير العام فقط');
-      if (allBranches && !ctx.access.allBranches) throw new HttpError(403, 'BRANCH_SCOPE_EXCEEDED', 'لا يمكنك منح نطاق فروع أوسع من نطاقك');
-      if (!branchIds.every((b) => ctx.access.branchAllowed(b))) throw new HttpError(403, 'BRANCH_SCOPE_EXCEEDED', 'لا يمكنك منح نطاق فروع أوسع من نطاقك');
+      const global = usersGlobal(ctx);
+      if (allBranches && !global) throw new HttpError(403, 'BRANCH_SCOPE_EXCEEDED', 'لا يمكنك منح نطاق فروع أوسع من نطاقك');
+      if (!global && !branchIds.every((b) => ctx.access.branchAllowed(b))) throw new HttpError(403, 'BRANCH_SCOPE_EXCEEDED', 'لا يمكنك منح نطاق فروع أوسع من نطاقك');
       assertPermissionsSubset(ctx, rolePerms(roleIds));
     },
     /** هل يحق للمستخدم الحالي إدارة هذا المستخدم أصلًا؟ */
     assertCanManage(ctx, target) {
       if (ctx.user.isSuperAdmin) return;
       if (target.is_super_admin === 1) throw new HttpError(403, 'SUPER_ADMIN_ONLY', 'إدارة المدير العام للمدير العام فقط');
-      if (!ctx.access.allBranches && (target.all_branches === 1 || !userBranchIds(target.id).every((b) => ctx.access.branchAllowed(b)))) {
+      if (!usersGlobal(ctx) && (target.all_branches === 1 || !userBranchIds(target.id).every((b) => ctx.access.branchAllowed(b)))) {
         throw new HttpError(403, 'BRANCH_SCOPE_EXCEEDED', 'المستخدم خارج نطاق فروعك');
       }
       assertPermissionsSubset(ctx, rolePerms(userRoleIds(target.id)));
@@ -107,4 +140,4 @@ function createGrantGuard({ db }) {
   };
 }
 
-module.exports = { createAccessLoader, createGrantGuard };
+module.exports = { createAccessLoader, createGrantGuard, USERS_GLOBAL };

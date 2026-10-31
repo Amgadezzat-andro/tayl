@@ -23,6 +23,16 @@ TAYL.views.roles = (() => {
             boxes.push(cb);
             return el('td', { class: 'c' }, cb);
           }))),
+        // الصلاحيات الخاصة (خارج المصفوفة القياسية)؛ المحجوزة للمدير العام لا يمنحها غيره
+        catalog.resources.filter((r) => r.group === g).flatMap((r) => (r.special || []).map((a) => {
+          const key = `${r.resource}.${a}`;
+          const reserved = (r.superOnlyGrant || []).includes(a);
+          const cb = el('input', { type: 'checkbox', value: key, checked: selected.includes(key), disabled: !isSuper && (reserved || !mine.includes(key)), 'aria-label': t('perm.special.' + key) });
+          boxes.push(cb);
+          return el('tr', { class: 'special-row' },
+            el('td', { colspan: String(catalog.actions.length + 1) },
+              el('label', { class: 'check' }, cb, el('span', { text: t('perm.special.' + key) }), reserved ? el('span', { class: 'badge gold', text: t('perm.superOnly') }) : null)));
+        })),
       ])),
     ));
     return { node, values: () => boxes.filter((b) => b.checked).map((b) => b.value) };

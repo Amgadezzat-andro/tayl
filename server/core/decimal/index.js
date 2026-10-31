@@ -12,9 +12,23 @@ const { Dec, parse } = engine;
 function createDecimalService(initialPolicy = createPolicy()) {
   let policy = initialPolicy;
 
-  /** تقريب الاعتماد: commitScale + قاعدة التقريب حسب النوع والعملة. */
-  function round(x, kind, currency) {
-    const p = policy.resolve(kind, currency);
+  /**
+   * لقطة من السياسة المركزية لنوع وعملة. المستند المعتمد يحفظ لقطته (commitScale/rounding)،
+   * فإعادة حسابه لاحقًا تعطي نفس النتيجة حتى لو تغيّرت السياسة بعد اعتماده.
+   */
+  const snapshot = (kind, currency) => Object.freeze(policy.resolve(kind, currency));
+
+  /** السياسة الفعلية: الحالية، أو لقطة سابقة (يُتحقق منها فلا تمر قواعد غير صالحة). */
+  function effective(kind, currency, snap) {
+    if (!snap) return policy.resolve(kind, currency);
+    const errs = validateRow({ ...snap, currency: snap.currency || '' });
+    if (errs.length || snap.kind !== kind) throw new DecimalError('BAD_POLICY', 'لقطة سياسة غير صالحة');
+    return { ...snap, storageScale: KINDS[kind].storageScale, maxIntegerDigits: KINDS[kind].maxIntegerDigits };
+  }
+
+  /** تقريب الاعتماد: commitScale + قاعدة التقريب حسب النوع والعملة (أو لقطة سياسة محفوظة). */
+  function round(x, kind, currency, snap) {
+    const p = effective(kind, currency, snap);
     return parse(x).toDecimalPlaces(p.commitScale, ROUNDING[p.rounding]);
   }
 
@@ -31,7 +45,7 @@ function createDecimalService(initialPolicy = createPolicy()) {
   }
 
   /** اعتماد + تخزين: الطريق القياسي لحفظ أي قيمة محسوبة. */
-  const commit = (x, kind, currency) => toStorage(round(x, kind, currency), kind);
+  const commit = (x, kind, currency, snap) => toStorage(round(x, kind, currency, snap), kind);
 
   /** قراءة من القاعدة: يرفض أي نص غير قانوني (يكشف التلف أو الكتابة من خارج المحرك). */
   function fromStorage(s, kind) {
@@ -66,8 +80,8 @@ function createDecimalService(initialPolicy = createPolicy()) {
    * توزيع مبلغ على أوزان بحيث يساوي مجموع الأجزاء المبلغ الأصلي تمامًا (طريقة أكبر الباقي).
    * فروق التقريب تذهب لأكبر الكسور المتبقية (والتعادل للأسبق)، فلا يضيع ولا يُخلق أي جزء من الوحدة.
    */
-  function allocate(total, weights, kind, currency) {
-    const p = policy.resolve(kind, currency);
+  function allocate(total, weights, kind, currency, snap) {
+    const p = effective(kind, currency, snap);
     const t = parse(total);
     if (!t.eq(t.toDecimalPlaces(p.commitScale))) throw new DecimalError('NOT_COMMITTED', 'المبلغ المراد توزيعه يجب أن يكون معتمدًا حسب السياسة أولًا');
     if (!Array.isArray(weights) || !weights.length) throw new DecimalError('BAD_WEIGHTS', 'لا توجد أوزان للتوزيع');
@@ -91,10 +105,25 @@ function createDecimalService(initialPolicy = createPolicy()) {
     return base.map((b) => engine.canonical(b.div(unit).times(sign)));
   }
 
+  /**
+   * النسب (الضرائب والخصومات) تُخزَّن كنسبة مئوية: 14 تعني 14%.
+   * percentOf يعيد قيمة النسبة من الأساس **دون تقريب** (القسمة على 100 منتهية دائمًا فلا فقد)،
+   * ثم يُعتمد الناتج بسياسة المبالغ: commit(percentOf(base, rate), 'amount', currency).
+   */
+  const percentOf = (base, ratePercent) => engine.mul(base, engine.div(ratePercent, '100'));
+  /** يرفض نسبة سالبة أو أكبر من 100% (لنسب الضرائب والخصومات). */
+  function assertPercent(ratePercent) {
+    if (engine.lt(ratePercent, '0') || engine.gt(ratePercent, '100')) throw new DecimalError('RATE_OUT_OF_RANGE', 'النسبة يجب أن تكون بين 0 و100');
+    return parse(ratePercent);
+  }
+  /** عرض النسبة: "14.00%". */
+  const formatPercent = (ratePercent, currency) => format(ratePercent, 'rate', currency, { grouping: false }) + '%';
+
   return {
     ...engine,
     KINDS, ROUNDING,
     round, toStorage, commit, fromStorage, format, balance, allocate,
+    snapshot, percentOf, assertPercent, formatPercent,
     policy: () => policy,
     setPolicy(p) { policy = p; },
   };

@@ -374,5 +374,11 @@
   "val.DISPLAY_SCALE_RANGE": "خانات العرض يجب ألا تتجاوز خانات الاعتماد.",
   "val.BAD_ROUNDING": "قاعدة تقريب غير معروفة.",
   "val.BAD_CURRENCY": "كود عملة غير صالح.",
-  "val.UNKNOWN_KIND": "نوع قيمة غير معروف."
+  "val.UNKNOWN_KIND": "نوع قيمة غير معروف.",
+  "company.baseCurrencyLocked": "العملة الأساسية مقفلة لوجود بيانات مالية معتمدة تعتمد عليها.",
+  "perm.special.users.manage_all": "إدارة كل المستخدمين بغض النظر عن نطاق الفروع",
+  "perm.superOnly": "يمنحها المدير العام فقط",
+  "audit.action.company.base_currency.changed": "تغيير العملة الأساسية",
+  "err.BASE_CURRENCY_LOCKED": "لا يمكن تغيير العملة الأساسية بعد وجود بيانات مالية معتمدة.",
+  "err.DECIMAL_RATE_OUT_OF_RANGE": "النسبة يجب أن تكون بين 0 و100."
 }

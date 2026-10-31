@@ -21,7 +21,8 @@ TAYL.views.company = (() => {
         { name: 'email', label: 'company.email', type: 'email', dir: 'ltr', value: c.email },
         { name: 'taxNumber', label: 'company.taxNumber', dir: 'ltr', value: c.taxNumber },
         { name: 'commercialRegister', label: 'company.commercialRegister', dir: 'ltr', value: c.commercialRegister },
-        { name: 'baseCurrency', label: 'company.baseCurrency', type: 'select', options: TAYL.currencyOptions(c.baseCurrency), value: c.baseCurrency, hint: 'company.baseCurrencyWarn' },
+        { name: 'baseCurrency', label: 'company.baseCurrency', type: 'select', options: TAYL.currencyOptions(c.baseCurrency), value: c.baseCurrency,
+          disabled: c.baseCurrencyLocked, hint: c.baseCurrencyLocked ? 'company.baseCurrencyLocked' : 'company.baseCurrencyWarn' },
         { name: 'defaultLanguage', label: 'company.defaultLanguage', type: 'select', value: c.defaultLanguage, options: [{ value: 'ar', label: t('lang.ar') }, { value: 'en', label: t('lang.en') }] },
       ],
       async onSubmit(v) {
