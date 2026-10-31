@@ -11,16 +11,26 @@ const { Dec, parse } = engine;
  */
 function createDecimalService(initialPolicy = createPolicy()) {
   let policy = initialPolicy;
+  // [م2] خانات عرض العملة (من وحدة العملات) تُستخدم للمبالغ عند عدم وجود صف دقة مخصص لتلك العملة.
+  let currencyDisplay = () => null;
+  function resolve(kind, currency) {
+    const p = policy.resolve(kind, currency);
+    if (kind === 'amount' && currency && p.source === 'default') {
+      const d = currencyDisplay(currency);
+      if (Number.isInteger(d)) return { ...p, displayScale: Math.min(d, p.commitScale) };
+    }
+    return p;
+  }
 
   /**
    * لقطة من السياسة المركزية لنوع وعملة. المستند المعتمد يحفظ لقطته (commitScale/rounding)،
    * فإعادة حسابه لاحقًا تعطي نفس النتيجة حتى لو تغيّرت السياسة بعد اعتماده.
    */
-  const snapshot = (kind, currency) => Object.freeze(policy.resolve(kind, currency));
+  const snapshot = (kind, currency) => Object.freeze(resolve(kind, currency));
 
   /** السياسة الفعلية: الحالية، أو لقطة سابقة (يُتحقق منها فلا تمر قواعد غير صالحة). */
   function effective(kind, currency, snap) {
-    if (!snap) return policy.resolve(kind, currency);
+    if (!snap) return resolve(kind, currency);
     const errs = validateRow({ ...snap, currency: snap.currency || '' });
     if (errs.length || snap.kind !== kind) throw new DecimalError('BAD_POLICY', 'لقطة سياسة غير صالحة');
     return { ...snap, storageScale: KINDS[kind].storageScale, maxIntegerDigits: KINDS[kind].maxIntegerDigits };
@@ -56,7 +66,7 @@ function createDecimalService(initialPolicy = createPolicy()) {
 
   /** للعرض فقط: displayScale + تجميع الآلاف. الناتج نص، ولا يُستخدم في أي حساب. */
   function format(x, kind, currency, { grouping = true } = {}) {
-    const p = policy.resolve(kind, currency);
+    const p = resolve(kind, currency);
     let s = parse(x).toFixed(p.displayScale, ROUNDING[p.rounding]);
     if (/^-0(\.0*)?$/.test(s)) s = s.slice(1);
     if (!grouping) return s;
@@ -124,7 +134,8 @@ function createDecimalService(initialPolicy = createPolicy()) {
     KINDS, ROUNDING,
     round, toStorage, commit, fromStorage, format, balance, allocate,
     snapshot, percentOf, assertPercent, formatPercent,
-    policy: () => policy,
+    policy: () => ({ ...policy, resolve }),
+    setCurrencyDisplay(fn) { currencyDisplay = fn; },
     setPolicy(p) { policy = p; },
   };
 }

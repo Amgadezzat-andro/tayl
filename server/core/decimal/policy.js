@@ -72,7 +72,8 @@ function createPolicy(rows = defaultRows()) {
     resolve(kind, currency = '') {
       const k = kindInfo(kind);
       const r = (currency && map.get(`${kind}|${currency}`)) || map.get(`${kind}|`);
-      return { ...r, currency: currency || '', storageScale: k.storageScale, maxIntegerDigits: k.maxIntegerDigits };
+      // source: 'currency' إن وُجد صف مخصص لهذه العملة، وإلا 'default'
+      return { ...r, currency: currency || '', source: r.currency ? 'currency' : 'default', storageScale: k.storageScale, maxIntegerDigits: k.maxIntegerDigits };
     },
   });
 }

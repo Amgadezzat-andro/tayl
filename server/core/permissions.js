@@ -4,13 +4,13 @@
  * كتالوج الصلاحيات المركزي. كل وحدة تعلن مواردها والإجراءات المتاحة عليها، فيصبح المفتاح "resource.action".
  * الإجراءات القياسية موحدة لكل البرنامج (الواجهة تعرضها كمصفوفة):
  *   view عرض، create إضافة، update تعديل، delete حذف، disable تفعيل/تعطيل،
- *   approve اعتماد، post ترحيل، print طباعة، export تصدير.
+ *   approve اعتماد، post ترحيل، print طباعة، export تصدير، import استيراد [م2].
  * أي صلاحية غير موجودة في الكتالوج تُرفض عند حفظ الأدوار.
  *
  * special: صلاحيات خاصة خارج المصفوفة القياسية (مثل users.manage_all).
  * superOnlyGrant: صلاحيات لا يمنحها إلا المدير العام (حتى لو كان المانح يملكها).
  */
-const ACTIONS = Object.freeze(['view', 'create', 'update', 'delete', 'disable', 'approve', 'post', 'print', 'export']);
+const ACTIONS = Object.freeze(['view', 'create', 'update', 'delete', 'disable', 'approve', 'post', 'print', 'export', 'import']);
 const RESOURCE_RE = /^[a-z][a-z_]{1,40}$/;
 
 function createPermissionCatalog() {

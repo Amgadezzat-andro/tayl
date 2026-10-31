@@ -17,7 +17,8 @@ class Router {
       return seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }).join('/') + '/?$');
     if (opts.permission != null && (typeof opts.permission !== 'string' || !opts.permission)) throw new Error(`صلاحية غير صالحة للمسار ${pattern}`);
-    this.routes.push({ method, pattern, re, keys, handler, permission: opts.permission || null, public: !!opts.public, auth: !!opts.auth || !!opts.permission });
+    // bodyLimit: حد خاص لحجم الطلب (مثل استيراد Excel)، وإلا الحد العام من الإعدادات.
+    this.routes.push({ method, pattern, re, keys, handler, permission: opts.permission || null, public: !!opts.public, auth: !!opts.auth || !!opts.permission, bodyLimit: opts.bodyLimit || null });
     return this;
   }
   get(p, o, h) { return this.add('GET', p, o, h); }

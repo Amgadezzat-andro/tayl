@@ -21,7 +21,7 @@ const serverFiles = files(path.join(ROOT, 'server'), '.js');
 const serverSrc = serverFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 
 test('i18n-ui: كل مفتاح ترجمة حرفي مستخدم في الواجهة موجود باللغتين', () => {
-  const NS = /^(app|support|lang|greeting|status|group|common|setup|auth|session|nav|dash|company|branch|user|role|perm|settings|precision|kind|rounding|audit|account|err|val|currency)\./;
+  const NS = /^(app|support|lang|greeting|status|group|common|setup|auth|session|nav|dash|company|branch|user|role|perm|settings|precision|kind|rounding|audit|account|err|val|currency|accClass|nature|cc|treasury|fiscal|period|pt|pm|unit|combo|grid|keys|import|master)\./;
   let n = 0;
   for (const f of jsFiles) {
     const src = fs.readFileSync(f, 'utf8');
@@ -29,7 +29,7 @@ test('i18n-ui: كل مفتاح ترجمة حرفي مستخدم في الواج�
       const key = m[1];
       if (!NS.test(key) || key.endsWith('.')) continue;
       // صلاحيات تُمرَّر لـ app.can وليست مفاتيح ترجمة
-      if (/^(company|branches|users|roles|settings|precision|audit)\.(view|create|update|delete|disable)$/.test(key) && !ar[key]) continue;
+      if (/^(company|branches|users|roles|settings|precision|audit|accounts|treasury|currencies|units)\.(view|create|update|delete|disable|print|export|import|manage_rates|view_sensitive)$/.test(key) && !ar[key]) continue;
       both(key); n++;
     }
   }
@@ -55,7 +55,15 @@ test('i18n-ui: لكل عملية تدقيق، وصلاحية، ونوع قيمة
   for (const r of Object.keys(ROUNDING)) both('rounding.' + r);
   for (const s of Object.keys(DEFS)) both('settings.' + s);
   const s = await startApp(); t.after(s.stop);
-  for (const r of s.app.services.permissions.list()) { both('perm.res.' + r.resource); both('perm.group.' + r.group); }
+  for (const r of s.app.services.permissions.list()) {
+    both('perm.res.' + r.resource); both('perm.group.' + r.group);
+    for (const a of r.special) both(`perm.special.${r.resource}.${a}`);
+  }
+  // [م2] أحداث التدقيق المولّدة من خدمة البيانات الرئيسية والاستيراد/التصدير
+  for (const e of ['account', 'account_type', 'cost_center', 'cost_center_type', 'currency', 'treasury', 'payment_term', 'payment_method', 'unit']) {
+    for (const o of ['created', 'updated', 'activated', 'deactivated', 'deleted']) both(`audit.action.${e}.${o}`);
+  }
+  for (const r of ['accounts', 'cost_centers', 'treasury', 'currencies', 'payment_terms', 'payment_methods', 'units', 'fiscal_years']) both(`audit.action.${r}.exported`);
   const cur = /TAYL\.CURRENCIES = \[([^\]]+)\]/.exec(fs.readFileSync(path.join(ROOT, 'public/js/views/auth.js'), 'utf8'))[1].match(/[A-Z]{3}/g);
   for (const c of cur) both('currency.' + c);
 });

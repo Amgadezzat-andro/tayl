@@ -8,7 +8,14 @@
   const { el, t, toast, errorText, panel } = TAYL.ui;
   const api = TAYL.api;
   const $ = (id) => document.getElementById(id);
-  const ORDER = ['dashboard', 'company', 'branches', 'users', 'roles', 'settings', 'audit', 'account'];
+  // القائمة مجمّعة: الرئيسية، الإعداد المحاسبي (م2)، البيانات المرجعية (م2)، الإدارة، الحساب
+  const NAV = [
+    { group: null, items: ['dashboard'] },
+    { group: 'nav.group.accounting', items: ['accounts', 'costCenters', 'treasury', 'currencies', 'fiscalYears'] },
+    { group: 'nav.group.reference', items: ['paymentTerms', 'paymentMethods', 'units'] },
+    { group: 'nav.group.admin', items: ['company', 'branches', 'users', 'roles', 'settings', 'audit'] },
+    { group: null, items: ['account'] },
+  ];
   const WARN_MS = 2 * 60000;
   let authView = null;      // آخر شاشة دخول/تأسيس معروضة (لإعادة رسمها عند تبديل اللغة)
   let serverDown = false;
@@ -62,9 +69,13 @@
     if (!s) return;
     const forced = s.user.mustChangePassword;
     const current = currentRoute();
-    $('nav').replaceChildren(el('div', { class: 'nav-group' }, ORDER.filter((n) => allowed(n) && (!forced || n === 'account')).map((n) => el('a', {
-      class: 'nav-item' + (n === current ? ' current' : ''), href: '#/' + n, 'aria-current': n === current ? 'page' : null, text: t(TAYL.views[n].key),
-    }))));
+    $('nav').replaceChildren(...NAV.map((g) => {
+      const items = g.items.filter((n) => allowed(n) && (!forced || n === 'account'));
+      if (!items.length) return null;
+      return el('div', { class: 'nav-group' }, g.group ? el('h3', { text: t(g.group) }) : null, items.map((n) => el('a', {
+        class: 'nav-item' + (n === current ? ' current' : ''), href: '#/' + n, 'aria-current': n === current ? 'page' : null, text: t(TAYL.views[n].key),
+      })));
+    }).filter(Boolean));
 
     $('user-name').textContent = s.user.displayName;
     const sel = $('branch-select');
@@ -73,11 +84,12 @@
     sel.disabled = s.branches.length < 2;
     $('lang-toggle').textContent = t('lang.switch');
     $('logout').textContent = t('auth.logout');
+    $('keys-help').textContent = t('keys.button');
     tick();
   }
 
   function currentRoute() {
-    const n = (location.hash.match(/^#\/([a-z]+)/) || [])[1];
+    const n = (location.hash.match(/^#\/([a-zA-Z]+)/) || [])[1];
     return n || 'dashboard';
   }
 
@@ -89,6 +101,7 @@
     if (!allowed(name)) name = 'dashboard';
     if (name !== currentRoute()) history.replaceState(null, '', '#/' + name);   // العنوان يطابق الشاشة المعروضة فعلًا
     renderChrome();
+    TAYL.keys.setPage([]);           // اختصارات الشاشة السابقة لا تبقى فعّالة
     const page = $('page');
     const seq = ++routeSeq;
     page.setAttribute('aria-busy', 'true');
@@ -156,6 +169,7 @@
     try { status = await (await fetch('/api/setup/status')).json(); } catch { /* الخادم غير متاح */ }
     await window.I18N.init(status && status.defaultLanguage);
     $('lang-toggle').addEventListener('click', toggleLang);
+    $('keys-help').addEventListener('click', () => TAYL.keys.help());
     $('auth-lang').addEventListener('click', toggleLang);
     $('logout').addEventListener('click', async () => {
       try { await api.post('/api/auth/logout'); } catch { /* الجلسة منتهية أصلًا */ }
@@ -178,5 +192,6 @@
     try { app.start(await api.get('/api/auth/session', { quiet401: true })); } catch { showAuth('login'); }
     pollHealth();
   }
+  TAYL.app = app;
   boot();
 })();

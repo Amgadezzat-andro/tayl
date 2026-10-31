@@ -45,7 +45,7 @@ test('rbac: إدارة الأدوار — صلاحية غير معروفة، ا�
   await s.admin.put(`/api/users/${u.id}`, { roleIds: [] });
   assert.equal((await s.admin.del(`/api/roles/${r.id}`)).status, 200);
   const cat = (await s.admin.get('/api/permissions')).body;
-  assert.deepEqual(cat.actions, ['view', 'create', 'update', 'delete', 'disable', 'approve', 'post', 'print', 'export']);
+  assert.deepEqual(cat.actions, ['view', 'create', 'update', 'delete', 'disable', 'approve', 'post', 'print', 'export', 'import']);   // [م2] + import
   assert.ok(cat.resources.some((x) => x.resource === 'branches'));
   const acts = s.app.db.prepare("SELECT action FROM audit_log WHERE action LIKE 'role.%' ORDER BY id").all().map((x) => x.action);
   assert.deepEqual(acts.filter((a) => a !== 'role.updated'), ['role.created', 'role.deleted']);   // الاسم المكرر لم يُنشئ شيئًا

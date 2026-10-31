@@ -49,6 +49,9 @@ TAYL.ui = (() => {
   function modal({ title, body, actions = [], wide = false }) {
     const dlg = document.getElementById('dialog');
     dlg.className = wide ? 'dialog wide' : 'dialog';
+    // يعود التركيز لما كان عليه قبل فتح النافذة (زر، صف في الجدول...)
+    const prev = dlg.open ? null : document.activeElement;
+    dlg.addEventListener('close', () => { if (prev && prev.isConnected && typeof prev.focus === 'function') prev.focus(); }, { once: true });
     const close = () => { if (dlg.open) dlg.close(); };
     // replaceChildren يحوّل null إلى النص "null"، فنمرر العناصر الموجودة فقط.
     dlg.replaceChildren(...[
@@ -57,6 +60,8 @@ TAYL.ui = (() => {
       actions.length ? el('div', { class: 'dialog-actions' }, actions) : null,
     ].filter(Boolean));
     if (!dlg.open) dlg.showModal();
+    const first = dlg.querySelector('.dialog-body input:not([disabled]):not([type="hidden"]), .dialog-body select:not([disabled]), .dialog-body textarea:not([disabled])');
+    if (first) first.focus();
     return close;
   }
   function confirm(message, { okKey = 'common.confirm', danger = false } = {}) {
@@ -81,8 +86,9 @@ TAYL.ui = (() => {
    * type: text | email | tel | password | textarea | select | checkbox | number | checks (قائمة اختيارات متعددة)
    * الاسم = مفتاح الـ API نفسه، فأخطاء الخادم تُعرض تحت الحقل الصحيح تلقائيًا.
    */
-  function form({ fields, submitKey = 'common.save', onSubmit, onCancel, readOnly = false, extra = null }) {
+  function form({ fields, submitKey = 'common.save', onSubmit, onCancel, readOnly = false, extra = null, enterSubmits = false }) {
     const inputs = {};
+    const wrappers = {};
     const errs = {};
     const alert = el('p', { class: 'form-alert', role: 'alert', hidden: true });
 
@@ -94,26 +100,60 @@ TAYL.ui = (() => {
       else if (f.type === 'select') {
         input = el('select', common, (f.options || []).map((o) => el('option', { value: o.value, text: o.label })));
       } else if (f.type === 'checkbox') input = el('input', { ...common, type: 'checkbox', checked: !!f.value });
-      else if (f.type === 'checks') {
+      else if (f.type === 'combobox') {
+        const cb = TAYL.combobox.create({ source: f.source, value: f.value || null, id, required: f.required, disabled: readOnly || f.disabled, label: t(f.label),
+          onChange: (v) => { if (f.onChange) f.onChange(v); refresh(); } });
+        inputs[f.name] = { f, input: cb.input, cb };
+        errs[f.name] = el('p', { class: 'field-error', hidden: true });
+        wrappers[f.name] = el('div', { class: 'field' + (f.full ? ' full' : '') }, el('label', { for: id, class: f.required ? 'req' : null, text: t(f.label) }), cb.node, f.hint ? el('p', { class: 'hint', text: t(f.hint) }) : null, errs[f.name]);
+        return wrappers[f.name];
+      } else if (f.type === 'custom') {
+        const c = f.render({ readOnly });
+        inputs[f.name] = { f, input: c.focusEl || c.node, custom: c };
+        errs[f.name] = el('p', { class: 'field-error', hidden: true });
+        wrappers[f.name] = el('div', { class: 'field full' }, el('span', { class: 'label', text: t(f.label) }), c.node, f.hint ? el('p', { class: 'hint', text: t(f.hint) }) : null, errs[f.name]);
+        return wrappers[f.name];
+      } else if (f.type === 'checks') {
         input = el('div', { class: 'checks', id, role: 'group' }, (f.options || []).map((o) => el('label', { class: 'check' },
           el('input', { type: 'checkbox', value: o.value, checked: (f.value || []).includes(o.value), disabled: readOnly || f.disabled || o.disabled }), el('span', { text: o.label }))));
       } else input = el('input', { ...common, type: f.type || 'text', min: f.min, max: f.max, maxlength: f.maxlength || 200, inputmode: f.inputmode });
       if (f.type !== 'checkbox' && f.type !== 'checks' && f.value !== undefined && f.value !== null) input.value = String(f.value);
       inputs[f.name] = { f, input };
       errs[f.name] = el('p', { class: 'field-error', hidden: true });
-      if (f.onChange) input.addEventListener('change', () => f.onChange(input));
+      input.addEventListener('change', () => { if (f.onChange) f.onChange(input); refresh(); });
       const label = el('label', { for: f.type === 'checks' ? null : id, class: f.required ? 'req' : null, text: t(f.label) });
       if (f.type === 'checkbox') {
-        return el('div', { class: 'field field-check' + (f.full ? ' full' : '') }, el('label', { class: 'check' }, input, el('span', { text: t(f.label) })), f.hint ? el('p', { class: 'hint', text: t(f.hint) }) : null, errs[f.name]);
+        wrappers[f.name] = el('div', { class: 'field field-check' + (f.full ? ' full' : '') }, el('label', { class: 'check' }, input, el('span', { text: t(f.label) })), f.hint ? el('p', { class: 'hint', text: t(f.hint) }) : null, errs[f.name]);
+        return wrappers[f.name];
       }
-      return el('div', { class: 'field' + (f.full || f.type === 'textarea' || f.type === 'checks' ? ' full' : '') }, label, input, f.hint ? el('p', { class: 'hint', text: t(f.hint) }) : null, errs[f.name]);
+      wrappers[f.name] = el('div', { class: 'field' + (f.full || f.type === 'textarea' || f.type === 'checks' ? ' full' : '') }, label, input, f.hint ? el('p', { class: 'hint', text: t(f.hint) }) : null, errs[f.name]);
+      return wrappers[f.name];
+    }
+    /** الحقول الشرطية (showIf) تُخفى ولا تُرسل قيمتها. */
+    function refresh() {
+      const v = rawValues();
+      for (const [name, { f }] of Object.entries(inputs)) if (f.showIf && wrappers[name]) wrappers[name].hidden = !f.showIf(v);
     }
 
+    function rawValues() {
+      const out = {};
+      for (const [name, { f, input, cb, custom }] of Object.entries(inputs)) {
+        if (cb) out[name] = cb.value ? cb.value.id : null;
+        else if (custom) out[name] = custom.value();
+        else if (f.type === 'checkbox') out[name] = input.checked;
+        else if (f.type === 'checks') out[name] = [...input.querySelectorAll('input:checked')].map((x) => (f.numeric ? Number.parseInt(x.value, 10) : x.value));
+        else if (f.type === 'number' || f.numeric) out[name] = input.value === '' ? null : Number.parseInt(input.value, 10);
+        else out[name] = input.value;
+      }
+      return out;
+    }
     function values() {
       const out = {};
-      for (const [name, { f, input }] of Object.entries(inputs)) {
-        if (f.skip) continue;
-        if (f.type === 'checkbox') out[name] = input.checked;
+      for (const [name, { f, input, cb, custom }] of Object.entries(inputs)) {
+        if (f.skip || (wrappers[name] && wrappers[name].hidden)) continue;
+        if (cb) out[name] = cb.value ? cb.value.id : null;
+        else if (custom) out[name] = custom.value();
+        else if (f.type === 'checkbox') out[name] = input.checked;
         else if (f.type === 'checks') out[name] = [...input.querySelectorAll('input:checked')].map((x) => (f.numeric ? Number.parseInt(x.value, 10) : x.value));
         else if (f.type === 'number') out[name] = input.value === '' ? null : Number.parseInt(input.value, 10);
         else if (f.numeric) out[name] = input.value === '' ? null : Number.parseInt(input.value, 10);
@@ -145,6 +185,16 @@ TAYL.ui = (() => {
       alert,
       el('div', { class: 'form-actions' }, onCancel ? el('button', { class: 'btn', type: 'button', text: t('common.cancel'), on: { click: onCancel } }) : null, submit),
     );
+    // Enter في حقل نص ينقل للحقل التالي ولا يحفظ (الحفظ بالزر أو Ctrl+S) — يمنع الحفظ غير المقصود
+    node.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' || ev.isComposing || enterSubmits || ev.defaultPrevented) return;
+      const tg = ev.target;
+      if (tg.tagName !== 'INPUT' || ['checkbox', 'radio', 'file', 'submit', 'button'].includes(tg.type)) return;
+      ev.preventDefault();
+      const focusables = [...node.querySelectorAll('input, select, textarea, button')].filter((x) => !x.disabled && x.offsetParent !== null && x.tabIndex >= 0 && x.type !== 'hidden');
+      const i = focusables.indexOf(tg);
+      if (i >= 0 && focusables[i + 1]) focusables[i + 1].focus();
+    });
     node.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       setErrors({});
@@ -156,7 +206,8 @@ TAYL.ui = (() => {
         else throw e;
       } finally { submit.disabled = false; }
     });
-    const api = { node, values, setErrors, inputs };
+    const api = { node, values, setErrors, inputs, refresh };
+    refresh();
     return api;
   }
 
@@ -202,5 +253,83 @@ TAYL.ui = (() => {
     });
   }
 
-  return { el, t, fill, errorText, fieldErrorText, toast, modal, confirm, form, table, badge, dateTime, name, panel, pageHead, button, readFileBase64, locale };
+  /** تنزيل ملف من الخادم (Excel) مع رسالة خطأ مترجمة عند الرفض. */
+  async function download(url, filename) {
+    try {
+      const r = await fetch(url, { credentials: 'same-origin' });
+      if (!r.ok) { let e = null; try { e = (await r.json()).error; } catch { /* */ } throw new TAYL.api.ApiError(r.status, e); }
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = filename;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    } catch (e) { toast(errorText(e), 'bad'); }
+  }
+
+  /** طباعة جدول بيانات من الخادم (بصلاحية print) في صفحة طباعة نظيفة باتجاه اللغة. */
+  async function printFrom(url) {
+    let d;
+    try { d = await TAYL.api.get(url); } catch (e) { toast(errorText(e), 'bad'); return; }
+    const area = document.getElementById('print-area');
+    fill(area,
+      el('h1', { text: d.title }),
+      el('p', { class: 'muted', text: dateTime(Date.now()) }),
+      el('table', { class: 'data' }, el('thead', null, el('tr', null, d.columns.map((c) => el('th', { text: c })))),
+        el('tbody', null, d.rows.map((r) => el('tr', null, r.map((c) => el('td', { text: c })))))));
+    document.body.classList.add('printing');
+    const done = () => { document.body.classList.remove('printing'); area.replaceChildren(); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done);
+    window.print();
+    setTimeout(done, 1000);
+  }
+
+  /**
+   * استيراد Excel بخطوتين: اختيار الملف ⇒ معاينة كل الصفوف وأخطائها ⇒ الحفظ متاح فقط إن لم يوجد أي خطأ.
+   * base: مسار الوحدة (مثل /api/accounts) ؛ onDone بعد الحفظ.
+   */
+  function importDialog({ base, titleKey, onDone }) {
+    let data = null;
+    const out = el('div', { class: 'import-out' });
+    const file = el('input', { type: 'file', accept: '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', id: 'imp-file' });
+    const commit = el('button', { class: 'btn primary', type: 'button', text: t('import.commit'), disabled: true });
+    const tpl = button('import.template', () => download(`${base}/import/template.xlsx?lang=${window.I18N.lang}`, 'template.xlsx'), 'btn small');
+    file.addEventListener('change', async () => {
+      const f = file.files[0];
+      commit.disabled = true; out.replaceChildren();
+      if (!f) return;
+      data = await readFileBase64(f);
+      try {
+        const r = await TAYL.api.post(`${base}/import/preview`, { data });
+        renderPreview(r);
+        commit.disabled = r.summary.invalid > 0 || r.summary.total === 0;
+      } catch (e) { out.replaceChildren(el('p', { class: 'form-alert', text: errorText(e) + (e.details && e.details.missing ? ': ' + e.details.missing.join(', ') : '') })); }
+    });
+    function renderPreview(r) {
+      const errText = (es) => es.map((x) => `${x.field}: ${window.I18N.has('val.' + x.code) ? t('val.' + x.code) : t('err.generic', { code: x.code })}`).join(' — ');
+      const keys = r.rows.length ? Object.keys(r.rows[0].values) : [];
+      fill(out,
+        el('p', { class: r.summary.invalid ? 'form-alert' : 'notice', text: t('import.summary', r.summary) }),
+        el('div', { class: 'table-wrap import-table' }, el('table', { class: 'data' },
+          el('thead', null, el('tr', null, el('th', { text: t('import.line') }), keys.map((k) => el('th', { dir: 'ltr', text: k })), el('th', { text: t('import.errors') }))),
+          el('tbody', null, r.rows.map((row) => el('tr', { class: row.errors.length ? 'row-error' : null },
+            el('td', { text: String(row.line) }), keys.map((k) => el('td', { text: row.values[k] })), el('td', { class: 'err-cell', text: errText(row.errors) })))))));
+    }
+    commit.addEventListener('click', async () => {
+      commit.disabled = true;
+      try {
+        const r = await TAYL.api.post(`${base}/import/commit`, { data });
+        close(); toast(t('import.done', { n: r.created })); if (onDone) onDone();
+      } catch (e) {
+        if (e.code === 'IMPORT_HAS_ERRORS') renderPreview({ summary: e.details.summary, rows: e.details.rows });
+        else toast(errorText(e), 'bad');
+      }
+    });
+    const close = modal({
+      title: t(titleKey), wide: true,
+      body: el('div', { class: 'import' }, el('p', { class: 'muted', text: t('import.intro') }), el('div', { class: 'inline-form' }, el('label', { for: 'imp-file', text: t('import.file') }), file, tpl), out),
+      actions: [button('common.cancel', () => close()), commit],
+    });
+  }
+
+  return { el, t, fill, errorText, download, printFrom, importDialog, fieldErrorText, toast, modal, confirm, form, table, badge, dateTime, name, panel, pageHead, button, readFileBase64, locale };
 })();

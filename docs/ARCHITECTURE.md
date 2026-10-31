@@ -1,6 +1,6 @@
-# TAYL — تصميم الهندسة (المرحلة 0 + المرحلة 1)
+# TAYL — تصميم الهندسة (المراحل 0 و1 و2)
 
-> تحديثات المرحلة 1 موسومة بـ **[م1]**. التفاصيل الكاملة: `PHASE1_REPORT.md` و`DECIMAL_ENGINE.md`.
+> تحديثات المرحلة 1 موسومة بـ **[م1]** والمرحلة 2 بـ **[م2]**. التفاصيل الكاملة: `PHASE1_REPORT.md` و`DECIMAL_ENGINE.md`.
 
 ## 1. هيكل المجلدات
 
@@ -94,3 +94,12 @@ tayl/
 - كل مستند/حركة مستقبلية: `branch_id INTEGER NOT NULL REFERENCES branches(id)`، ويُتحقق منه بـ `ctx.access.assertBranch(id)`.
 - التقارير: `const f = ctx.access.sqlFilter('branch_id', ctx.query.branch)` ثم `WHERE ${f.sql}` مع `f.params` — `branch=all` تعني كل الفروع المصرح بها للمستخدم (وليس كل الفروع). النمط مثبت باختبار `branches: نطاق التقارير`.
 - الفروع والمستخدمون لا يُحذفون (triggers) بل يُعطَّلون، حتى تبقى المراجع التاريخية سليمة.
+
+## 8. [م2] البيانات الرئيسية
+- ترتيب الوحدات: `system` ← `company-setup` ← `security` ← (`fiscal-years`، `chart-accounts`، `cost-centers`، `currencies`) ← `treasury` (يعتمد على الحسابات والعملات) ← `payment-terms`، `units`.
+- **خدمة موحدة** `core/master.js` لكل كيان بيانات رئيسية: الحذف فقط عند عدم الارتباط، قفل الكود بعد الارتباط، الشجرة، نطاق الفروع، الحقول الحساسة، التدقيق بالفروق، البحث، التصدير والطباعة.
+- **سجل الارتباطات** `services.usage`: الوحدة التي تستخدم كيانًا من وحدة أخرى تسجّل ذلك. مثال للمرحلة 3: `services.usage.register('account', 'journal', (db, id) => !!db.prepare('SELECT 1 FROM journal_lines WHERE account_id = ? LIMIT 1').get(id))`.
+- **سجل النشاط المالي** `services.financialActivity` (من مراجعة 0.2.1): القيود والفواتير القادمة تسجّل فيه فتُقفل العملة الأساسية.
+- **دوال تتحقق منها المستندات القادمة قبل الاعتماد:** `services.fiscal.assertOpen(date)`، `services.accounts.assertPostable(id)`، `services.costCenters.assertUsable(id, ctx)`، `services.treasuries.assertUsable(id, ctx)`، `services.currencies.rateSnapshot(code, date, type)` + `convert()`، `services.paymentTerms.snapshot(id)` + `schedule()`، `services.decimal.snapshot(kind, currency)`. كل لقطة تُحفظ داخل المستند.
+- **الواجهة:** مكونات موحدة `components/{combobox,grid,shortcuts}.js` وشاشة `views/master.js`؛ أي شاشة بيانات رئيسية قادمة = إعداد لـ `TAYL.masterView` بدل كود جديد.
+- **Excel:** `core/xlsx` بلا تبعية؛ `core/import.js` للاستيراد بخطوتين (معاينة ثم حفظ الكل أو لا شيء).

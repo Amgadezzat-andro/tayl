@@ -217,9 +217,12 @@ test('0.2.1 الصلاحيات: العرض لا يمنح أي تعديل — ك�
     assert.equal(res.status, 403, `${r.method} ${r.pattern}`);
     assert.equal(res.body.error.code, 'FORBIDDEN', `${r.method} ${r.pattern}`);
   }
-  // وكل مسارات العرض تعمل له
+  // مسارات القراءة بصلاحية view تعمل له؛ ومسارات GET التي تتطلب غيرها (تصدير/طباعة/استيراد/إنشاء — م2) تُرفض.
+  // (بعض مسارات العرض تتطلب معاملات استعلام فقد ترد 400؛ المهم ألا ترد 403.)
   for (const r of s.app.router.routes.filter((x) => x.method === 'GET' && x.permission && !x.pattern.includes(':'))) {
-    assert.equal((await viewer.client.get(r.pattern)).status, 200, r.pattern);
+    const st = (await viewer.client.get(r.pattern)).status;
+    if (r.permission.endsWith('.view')) assert.notEqual(st, 403, r.pattern);
+    else assert.equal(st, 403, `${r.pattern} (${r.permission})`);
   }
   const after = s.app.db.prepare("SELECT (SELECT group_concat(name_en) FROM company) c, (SELECT count(*) FROM branches) b, (SELECT count(*) FROM roles) r, (SELECT group_concat(value) FROM settings) st").get();
   assert.deepEqual(after, before);

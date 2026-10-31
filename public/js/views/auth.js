@@ -94,6 +94,7 @@ TAYL.auth = (() => {
         { name: 'password', label: 'user.password', type: 'password', required: true, dir: 'ltr', autocomplete: 'current-password', full: true, maxlength: 128 },
       ],
       submitKey: 'auth.login',
+      enterSubmits: true,   // في شاشة الدخول Enter يرسل (السلوك المتوقع)
       async onSubmit(v) {
         try {
           const s = await api.post('/api/auth/login', v, { quiet401: true });

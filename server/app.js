@@ -10,6 +10,9 @@ const { createHttpServer } = require('./core/http');
 const { createDecimalService } = require('./core/decimal');
 const { registerDecimalSql } = require('./core/decimal/sql');
 const { createPermissionCatalog } = require('./core/permissions');
+const { registerSearchSql } = require('./core/search');
+const { createUsageRegistry } = require('./core/usage');
+const { loadLocales } = require('./core/i18n');
 const pkg = require('../package.json');
 
 const BRAND = Object.freeze({
@@ -23,12 +26,21 @@ const MODULES = [
   require('./modules/system'),
   require('./modules/company-setup'),   // المرحلة 1: الشركة والفروع والإعدادات وسياسة الدقة
   require('./modules/security'),        // المرحلة 1: المستخدمون والأدوار والجلسات والتأسيس
+  // المرحلة 2: البيانات الرئيسية والبنية المحاسبية (بلا قيود ولا ترحيل)
+  require('./modules/fiscal-years'),
+  require('./modules/chart-accounts'),
+  require('./modules/cost-centers'),
+  require('./modules/currencies'),
+  require('./modules/treasury'),
+  require('./modules/payment-terms'),
+  require('./modules/units'),
 ];
 
 async function createApp({ config, logger, modules = MODULES }) {
   const ordered = resolveOrder(modules);
   const db = openDatabase(config.dbFile);
   registerDecimalSql(db);   // dec_sum / dec_cmp: جمع ومقارنة عشرية دقيقة داخل SQL
+  registerSearchSql(db);    // tayl_norm: بحث عربي/إنجليزي موحد
 
   // أمان الترحيل: قبل أي تغيير في هيكل قاعدة تحوي بيانات، نأخذ نسخة احتياطية موثّقة.
   const { pending, applied } = migrator.plan(db, ordered);
@@ -46,6 +58,8 @@ async function createApp({ config, logger, modules = MODULES }) {
     modules: ordered, authorizer: null,    // تسجّله وحدة security
     decimal: createDecimalService(),       // محرك الدقة المركزي؛ تحمّل company-setup سياسته من القاعدة
     permissions: createPermissionCatalog(),
+    usage: createUsageRegistry(db),        // [م2] منع حذف/تغيير كود ما هو مستخدم
+    i18n: loadLocales(config.publicDir),   // [م2] عناوين التصدير والطباعة باللغتين
     backup: { create: (reason = 'manual') => backup.createBackup(db, { dir: config.backupDir, reason, retention: config.backupRetention, appVersion: pkg.version }) },
   };
   for (const m of ordered) m.register(router, services);

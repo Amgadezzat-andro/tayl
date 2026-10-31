@@ -113,7 +113,7 @@ function createHttpServer({ router, config, logger, services }) {
       const ctx = {
         req, res, requestId, params, query: Object.fromEntries(url.searchParams), services, user: null,
         ip: req.socket.remoteAddress || '',
-        body: () => readJsonBody(req, config.maxBodyBytes),
+        body: () => readJsonBody(req, route.bodyLimit || config.maxBodyBytes),
       };
       // الصلاحيات تُفرض هنا على الخادم (fail-closed):
       //  - مسار لا يعلن public/auth/permission => مرفوض دائمًا.
