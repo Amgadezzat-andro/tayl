@@ -14,4 +14,7 @@ class MigrationError extends Error {
 class BackupError extends Error {
   constructor(code, message) { super(message); this.name = 'BackupError'; this.code = code; }
 }
-module.exports = { HttpError, MigrationError, BackupError };
+class DecimalError extends Error {
+  constructor(code, message) { super(message); this.name = 'DecimalError'; this.code = code; }
+}
+module.exports = { HttpError, MigrationError, BackupError, DecimalError };

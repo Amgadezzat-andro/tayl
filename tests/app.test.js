@@ -8,13 +8,14 @@ const { createApp } = require('../server/app');
 const { openDatabase } = require('../server/core/db');
 const { listBackups } = require('../server/core/backup');
 const { tmpDir, silent } = require('./helpers');
-const system = require('../server/modules/system');
+const { MODULES } = require('../server/app');
 
 test('app: أول تشغيل ينشئ القاعدة والجداول بلا نسخة احتياطية (لا بيانات بعد)', async () => {
   const dir = tmpDir();
   const config = loadConfig({ dataDir: dir, port: 0 });
   const app = await createApp({ config, logger: silent });
-  assert.deepEqual(app.migrationsApplied, ['system/0001_core']);
+  // المرحلة 1 أضافت ترحيلات company-setup و security (القائمة الكاملة بترتيب الاعتماد).
+  assert.deepEqual(app.migrationsApplied, ['system/0001_core', 'company-setup/0001_company_branches', 'security/0001_users_roles_sessions']);
   assert.equal(app.preMigrationBackup, null);
   assert.equal(app.db.prepare("SELECT value FROM app_meta WHERE key='app_id'").get().value, 'TAYL');
   await app.close();
@@ -42,7 +43,7 @@ test('app: ترحيل جديد على قاعدة بها بيانات => نسخة
   const extraDir = tmpDir();
   fs.writeFileSync(path.join(extraDir, '0001_extra.sql'), 'CREATE TABLE extra(id INTEGER PRIMARY KEY) STRICT;');
   const extra = { name: 'extra', version: '1', dependsOn: ['system'], migrationsDir: extraDir, register() {} };
-  app = await createApp({ config, logger: silent, modules: [system, extra] });
+  app = await createApp({ config, logger: silent, modules: [...MODULES, extra] });   // المرحلة 1: كل الوحدات + الوحدة الجديدة
   assert.deepEqual(app.migrationsApplied, ['extra/0001_extra']);
   assert.ok(app.preMigrationBackup);
   const b = listBackups(config.backupDir);
@@ -59,7 +60,7 @@ test('app: وحدة جديدة تُضاف دون تعديل الوحدات ال�
   fs.writeFileSync(path.join(mdir, '0001_t.sql'), 'CREATE TABLE widgets(id INTEGER PRIMARY KEY, n TEXT) STRICT; INSERT INTO widgets(n) VALUES (\'a\');');
   const widgets = { name: 'widgets', version: '1', dependsOn: ['system'], migrationsDir: mdir,
     register(r, s) { r.get('/api/widgets', { public: true }, () => s.db.prepare('SELECT * FROM widgets').all()); } };
-  const app = await createApp({ config: loadConfig({ dataDir: dir, port: 0 }), logger: silent, modules: [widgets, system] });
+  const app = await createApp({ config: loadConfig({ dataDir: dir, port: 0 }), logger: silent, modules: [widgets, MODULES[0]] });
   const addr = await app.listen();
   const rows = await (await fetch(`http://127.0.0.1:${addr.port}/api/widgets`)).json();
   assert.deepEqual(rows, [{ id: 1, n: 'a' }]);

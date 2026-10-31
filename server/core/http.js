@@ -3,7 +3,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { HttpError } = require('./errors');
+const { HttpError, DecimalError } = require('./errors');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -25,6 +25,22 @@ function sendJson(res, status, body, extra = {}) {
   res.end(buf);
 }
 
+const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * طلب يغيّر الحالة يجب أن يأتي من نفس الأصل: يُرفض أي Origin مختلف عن Host، وأي طلب يعلن المتصفح أنه cross-site.
+ * (طبقة دفاع إضافية فوق SameSite=Strict ورمز CSRF الخاص بالجلسة.)
+ */
+function assertSameOrigin(req) {
+  const site = req.headers['sec-fetch-site'];
+  if (site && site !== 'same-origin' && site !== 'none') throw new HttpError(403, 'CROSS_ORIGIN', 'طلب من أصل مختلف مرفوض');
+  const origin = req.headers.origin;
+  if (origin === undefined) return;
+  let host = null;
+  try { host = new URL(origin).host.toLowerCase(); } catch { /* Origin: null أو تالف */ }
+  if (!host || host !== String(req.headers.host || '').toLowerCase()) throw new HttpError(403, 'CROSS_ORIGIN', 'طلب من أصل مختلف مرفوض');
+}
+
 function readJsonBody(req, max) {
   return new Promise((resolve, reject) => {
     const chunks = []; let size = 0; let dead = false;
@@ -37,6 +53,8 @@ function readJsonBody(req, max) {
     req.on('end', () => {
       if (dead) return;
       if (!size) return resolve(undefined);
+      // نماذج HTML لا تستطيع إرسال application/json، فاشتراطه يغلق باب CSRF عبر النماذج أيضًا.
+      if (!/^application\/json(;|$)/i.test(String(req.headers['content-type'] || ''))) { reject(new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', 'نوع المحتوى يجب أن يكون application/json')); return; }
       try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
       catch { reject(new HttpError(400, 'BAD_JSON', 'محتوى الطلب ليس JSON صالحًا')); }
     });
@@ -90,18 +108,26 @@ function createHttpServer({ router, config, logger, services }) {
       if (!m) throw new HttpError(404, 'NOT_FOUND', 'المسار غير موجود');
       const { route, params } = m;
 
+      if (UNSAFE.has(req.method)) assertSameOrigin(req);
+
       const ctx = {
         req, res, requestId, params, query: Object.fromEntries(url.searchParams), services, user: null,
+        ip: req.socket.remoteAddress || '',
         body: () => readJsonBody(req, config.maxBodyBytes),
       };
-      // الصلاحيات تُفرض هنا على الخادم. مسار يطلب صلاحية بلا مُصرِّح مسجَّل => رفض (fail-closed).
-      if (route.permission) {
+      // الصلاحيات تُفرض هنا على الخادم (fail-closed):
+      //  - مسار لا يعلن public/auth/permission => مرفوض دائمًا.
+      //  - مسار محمي بلا مُصرِّح مسجَّل => مرفوض.
+      if (!route.public) {
+        if (!route.auth) throw new HttpError(403, 'ROUTE_NOT_DECLARED', 'المسار لا يعلن متطلبات الوصول؛ مرفوض');
         if (!services.authorizer) throw new HttpError(403, 'AUTHZ_NOT_CONFIGURED', 'نظام الصلاحيات غير مفعّل بعد؛ العملية مرفوضة');
         await services.authorizer(ctx, route.permission);
       }
       const result = await route.handler(ctx);
       if (!res.writableEnded && !res.headersSent) sendJson(res, 200, result === undefined ? { ok: true } : result);
-    } catch (e) {
+    } catch (err) {
+      // قيمة عشرية غير صالحة من المستخدم = خطأ إدخال (400) وليس خطأ خادم.
+      const e = err instanceof DecimalError ? new HttpError(400, 'DECIMAL_' + err.code, err.message) : err;
       const known = e instanceof HttpError;
       if (!known) logger.error('unhandled', { requestId, err: String(e && e.stack || e) });
       if (res.headersSent) return res.end();
@@ -115,4 +141,4 @@ function createHttpServer({ router, config, logger, services }) {
   return server;
 }
 
-module.exports = { createHttpServer, sendJson };
+module.exports = { createHttpServer, sendJson, assertSameOrigin };

@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const Database = require('better-sqlite3');
 const { openDatabase } = require('./db');
 const { BackupError } = require('./errors');
 
@@ -43,6 +44,10 @@ async function createBackup(db, { dir, reason = 'manual', retention = 30, appVer
   const tmp = finalPath + '.partial';
   try {
     await db.backup(tmp);
+    // النسخة ترث وضع WAL؛ فتحها للفحص كان يترك ملفات -wal/-shm يتيمة بجوارها (اكتُشف في المرحلة 1).
+    // تحويلها إلى DELETE يجعلها ملفًا واحدًا مكتفيًا بذاته (ويُعاد WAL تلقائيًا عند فتحها بعد الاستعادة).
+    const copy = new Database(tmp);
+    try { copy.pragma('journal_mode = DELETE'); } finally { copy.close(); }
     if (!integrityOk(tmp)) throw new BackupError('INTEGRITY', 'فشل فحص سلامة النسخة الاحتياطية');
     let migrations = [];
     try { migrations = db.prepare('SELECT module, id FROM schema_migrations ORDER BY module, id').all(); } catch { /* قاعدة جديدة */ }

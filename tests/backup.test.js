@@ -25,6 +25,14 @@ test('backup: إنشاء نسخة مع manifest وبصمة صحيحة', async ()
   db.close();
 });
 
+test('backup: لا تُترك ملفات جانبية (-wal/-shm) بعد النسخ أو التحقق — المرحلة 1', async () => {
+  const { db, bdir } = mkDb();
+  const r = await backup.createBackup(db, { dir: bdir });
+  backup.verifyBackup(r.path);
+  assert.deepEqual(fs.readdirSync(bdir).sort(), [path.basename(r.path), path.basename(r.path).replace(/\.db$/, '.json')].sort());
+  db.close();
+});
+
 test('backup: النسخة تحوي البيانات فعلًا', async () => {
   const { db, bdir } = mkDb();
   const r = await backup.createBackup(db, { dir: bdir });

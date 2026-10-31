@@ -1,3 +1,4 @@
 node_modules/
 data/
 *.partial
+e2e-shots/

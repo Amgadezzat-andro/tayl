@@ -7,6 +7,9 @@ const { createAudit } = require('./core/audit');
 const { Router } = require('./core/router');
 const { resolveOrder } = require('./core/module-loader');
 const { createHttpServer } = require('./core/http');
+const { createDecimalService } = require('./core/decimal');
+const { registerDecimalSql } = require('./core/decimal/sql');
+const { createPermissionCatalog } = require('./core/permissions');
 const pkg = require('../package.json');
 
 const BRAND = Object.freeze({
@@ -18,11 +21,14 @@ const BRAND = Object.freeze({
 /** سجل الوحدات: إضافة وحدة = سطر هنا. الترتيب الفعلي يُحسب من dependsOn. */
 const MODULES = [
   require('./modules/system'),
+  require('./modules/company-setup'),   // المرحلة 1: الشركة والفروع والإعدادات وسياسة الدقة
+  require('./modules/security'),        // المرحلة 1: المستخدمون والأدوار والجلسات والتأسيس
 ];
 
 async function createApp({ config, logger, modules = MODULES }) {
   const ordered = resolveOrder(modules);
   const db = openDatabase(config.dbFile);
+  registerDecimalSql(db);   // dec_sum / dec_cmp: جمع ومقارنة عشرية دقيقة داخل SQL
 
   // أمان الترحيل: قبل أي تغيير في هيكل قاعدة تحوي بيانات، نأخذ نسخة احتياطية موثّقة.
   const { pending, applied } = migrator.plan(db, ordered);
@@ -37,7 +43,9 @@ async function createApp({ config, logger, modules = MODULES }) {
   const router = new Router();
   const services = {
     db, audit, config, logger, brand: BRAND, version: pkg.version,
-    modules: ordered, authorizer: null,    // المرحلة 1 تسجّل المُصرِّح هنا
+    modules: ordered, authorizer: null,    // تسجّله وحدة security
+    decimal: createDecimalService(),       // محرك الدقة المركزي؛ تحمّل company-setup سياسته من القاعدة
+    permissions: createPermissionCatalog(),
     backup: { create: (reason = 'manual') => backup.createBackup(db, { dir: config.backupDir, reason, retention: config.backupRetention, appVersion: pkg.version }) },
   };
   for (const m of ordered) m.register(router, services);

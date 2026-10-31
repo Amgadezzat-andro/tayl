@@ -12,9 +12,10 @@ const probe = {
   register(router) {
     router.get('/api/probe/open', { public: true }, () => ({ hi: 1 }));
     router.get('/api/probe/secure', { permission: 'probe.read' }, () => ({ secret: 1 }));
-    router.post('/api/probe/echo', async (ctx) => ({ got: await ctx.body() }));
-    router.get('/api/probe/boom', () => { throw new Error('secret internal detail'); });
-    router.get('/api/probe/item/:id', (ctx) => ({ id: ctx.params.id }));
+    // المرحلة 1: كل مسار يجب أن يعلن متطلبات الوصول صراحةً (fail-closed)، لذا أُضيف { public: true }.
+    router.post('/api/probe/echo', { public: true }, async (ctx) => ({ got: await ctx.body() }));
+    router.get('/api/probe/boom', { public: true }, () => { throw new Error('secret internal detail'); });
+    router.get('/api/probe/item/:id', { public: true }, (ctx) => ({ id: ctx.params.id }));
   },
 };
 
@@ -26,11 +27,12 @@ test('http: health و info و modules', async (t) => {
   assert.equal(info.name, 'TAYL');
   assert.equal(info.support, '01123401333');
   assert.equal(info.tagline, 'STRATEGIC ACCOUNTING | FINANCE | COST SOLUTIONS');
-  assert.equal(info.migrations.length, 1);
+  assert.equal(info.migrations.length, 3);   // المرحلة 1: system + company-setup + security
   const mods = await (await fetch(s.base + '/api/system/modules')).json();
   assert.equal(mods.roadmap.length, 22);
-  assert.ok(mods.roadmap.every((r) => r.status === 'planned'));
-  assert.deepEqual(mods.loaded.map((m) => m.name), ['system']);
+  // المرحلة 1 فعّلت وحدتي التأسيس والأمان فقط؛ الباقي مخطط.
+  assert.deepEqual(mods.roadmap.filter((r) => r.status === 'active').map((r) => r.id), ['company-setup', 'security']);
+  assert.deepEqual(mods.loaded.map((m) => m.name), ['system', 'company-setup', 'security']);
 });
 
 test('http: ترويسات الأمان موجودة', async (t) => {

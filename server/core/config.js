@@ -12,6 +12,8 @@ const DEFAULTS = {
   backupRetention: 30,
   maxBodyBytes: 1024 * 1024,
   allowedHosts: null,         // null = يُشتق تلقائيًا من host/port
+  cookieSecure: 'auto',       // 'auto' = Secure عند HTTPS فقط؛ true لإجباره (مطلوب عند التشغيل على الشبكة عبر HTTPS)
+  allowRemoteSetup: false,    // التأسيس الأول مسموح من نفس الجهاز فقط ما لم يُفعَّل هذا صراحة
 };
 
 /** الأولوية: متغيرات البيئة > data/config.json > القيم الافتراضية */

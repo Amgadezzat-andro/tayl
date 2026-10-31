@@ -1,7 +1,11 @@
 'use strict';
 const { HttpError } = require('./errors');
 
-/** موجّه بسيط: /api/x/:id ، مع دعم 405 ، وتصريح صلاحية يُفرض على الخادم (يفشل مغلقًا). */
+/**
+ * موجّه بسيط: /api/x/:id ، مع دعم 405 ، وتصريح صلاحية يُفرض على الخادم (يفشل مغلقًا).
+ * كل مسار يعلن صراحة واحدًا من: { public: true } أو { auth: true } (أي مستخدم مسجّل) أو { permission: 'x.y' }.
+ * مسار لا يعلن شيئًا يُرفض وقت الطلب (http.js).
+ */
 class Router {
   constructor() { this.routes = []; }
 
@@ -12,7 +16,8 @@ class Router {
       if (seg.startsWith(':')) { keys.push(seg.slice(1)); return '([^/]+)'; }
       return seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }).join('/') + '/?$');
-    this.routes.push({ method, pattern, re, keys, handler, permission: opts.permission || null, public: !!opts.public });
+    if (opts.permission != null && (typeof opts.permission !== 'string' || !opts.permission)) throw new Error(`صلاحية غير صالحة للمسار ${pattern}`);
+    this.routes.push({ method, pattern, re, keys, handler, permission: opts.permission || null, public: !!opts.public, auth: !!opts.auth || !!opts.permission });
     return this;
   }
   get(p, o, h) { return this.add('GET', p, o, h); }
@@ -27,7 +32,8 @@ class Router {
       if (!m) continue;
       if (r.method !== method) { allowed.add(r.method); continue; }
       const params = {};
-      r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); });
+      try { r.keys.forEach((k, i) => { params[k] = decodeURIComponent(m[i + 1]); }); }
+      catch { throw new HttpError(400, 'BAD_PATH', 'مسار غير صالح'); }
       return { route: r, params };
     }
     if (allowed.size) throw new HttpError(405, 'METHOD_NOT_ALLOWED', 'الطريقة غير مسموحة لهذا المسار', { allowed: [...allowed] });

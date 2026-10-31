@@ -1,94 +1,182 @@
 'use strict';
+/*
+ * هيكل الواجهة: التشغيل ← (تأسيس | دخول | البرنامج)، التوجيه بالـ hash، القائمة حسب الصلاحيات،
+ * والرأس (المستخدم، الفرع الحالي، حالة الجلسة والخادم، الساعة، اللغة).
+ * إخفاء عناصر القائمة هنا للراحة فقط؛ الحماية الفعلية في الخادم.
+ */
 (() => {
+  const { el, t, toast, errorText, panel } = TAYL.ui;
+  const api = TAYL.api;
   const $ = (id) => document.getElementById(id);
-  const t = (k) => window.I18N.t(k);
-  const GROUP_ORDER = ['foundation', 'finance', 'trade', 'inventory', 'production', 'assets', 'reports', 'operations'];
-  let data = { info: null, modules: null, health: null, unreachable: false };
+  const ORDER = ['dashboard', 'company', 'branches', 'users', 'roles', 'settings', 'audit', 'account'];
+  const WARN_MS = 2 * 60000;
+  let authView = null;      // آخر شاشة دخول/تأسيس معروضة (لإعادة رسمها عند تبديل اللغة)
+  let serverDown = false;
 
-  const locale = () => (window.I18N.lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB');   // أرقام لاتينية للمحاسبين
+  const app = {
+    session: null,
+    can(p) {
+      const u = this.session && this.session.user;
+      if (!u) return false;
+      if (Array.isArray(p)) return p.some((x) => this.can(x));
+      return !p || u.isSuperAdmin || u.permissions.includes(p);
+    },
+    async refreshSession() { this.session = await api.get('/api/auth/session'); renderChrome(); },
+    start(s) { this.session = s; showApp(); },
+    afterSetup(username) { showAuth('login', { message: 'setup.done', username }); },
+    navigate(name) { if (location.hash === '#/' + name) route(); else location.hash = '#/' + name; },
+    rerender() { route(); },
+  };
 
+  // ── الدخول والتأسيس ──
+  function showAuth(kind, opts = {}) {
+    app.session = null;
+    authView = { kind, opts };
+    $('view-app').hidden = true;
+    $('view-auth').hidden = false;
+    $('boot').hidden = true;
+    $('auth-lang').textContent = t('lang.switch');
+    if (kind === 'setup') TAYL.auth.setup($('auth-body'), app);
+    else if (kind === 'error') $('auth-body').replaceChildren(el('p', { class: 'form-alert', text: t('status.unreachable') }), TAYL.ui.button('common.retry', () => location.reload(), 'btn primary'));
+    else TAYL.auth.login($('auth-body'), app, opts);
+  }
+
+  // ── البرنامج ──
+  function showApp() {
+    authView = null;
+    $('auth-body').replaceChildren();   // لا تبقى كلمة مرور مكتوبة في عناصر مخفية
+    $('view-auth').hidden = true;
+    $('boot').hidden = true;
+    $('view-app').hidden = false;
+    renderChrome();
+    if (!location.hash.startsWith('#/')) location.hash = '#/dashboard'; else route();
+  }
+
+  function allowed(name) {
+    const v = TAYL.views[name];
+    return v && app.can(v.perm);
+  }
+
+  function renderChrome() {
+    const s = app.session;
+    if (!s) return;
+    const forced = s.user.mustChangePassword;
+    const current = currentRoute();
+    $('nav').replaceChildren(el('div', { class: 'nav-group' }, ORDER.filter((n) => allowed(n) && (!forced || n === 'account')).map((n) => el('a', {
+      class: 'nav-item' + (n === current ? ' current' : ''), href: '#/' + n, 'aria-current': n === current ? 'page' : null, text: t(TAYL.views[n].key),
+    }))));
+
+    $('user-name').textContent = s.user.displayName;
+    const sel = $('branch-select');
+    sel.replaceChildren(...(s.branches.length ? s.branches : [null]).map((b) => el('option', { value: b ? String(b.id) : '', text: b ? `${b.code} — ${TAYL.ui.name(b)}` : t('dash.noBranch') })));
+    sel.value = s.branch ? String(s.branch.id) : '';
+    sel.disabled = s.branches.length < 2;
+    $('lang-toggle').textContent = t('lang.switch');
+    $('logout').textContent = t('auth.logout');
+    tick();
+  }
+
+  function currentRoute() {
+    const n = (location.hash.match(/^#\/([a-z]+)/) || [])[1];
+    return n || 'dashboard';
+  }
+
+  let routeSeq = 0;
+  async function route() {
+    if (!app.session) return;
+    let name = currentRoute();
+    if (app.session.user.mustChangePassword) name = 'account';
+    if (!allowed(name)) name = 'dashboard';
+    if (name !== currentRoute()) history.replaceState(null, '', '#/' + name);   // العنوان يطابق الشاشة المعروضة فعلًا
+    renderChrome();
+    const page = $('page');
+    const seq = ++routeSeq;
+    page.setAttribute('aria-busy', 'true');
+    try {
+      const holder = el('div');
+      await TAYL.views[name].render(holder, app);
+      if (seq !== routeSeq) return;
+      TAYL.ui.fill(page, ...holder.childNodes);
+    } catch (e) {
+      if (seq !== routeSeq || (e && e.status === 401)) return;
+      TAYL.ui.fill(page, panel(null, el('p', { class: 'form-alert', text: errorText(e) })));
+    } finally {
+      page.removeAttribute('aria-busy');
+    }
+    $('page').focus({ preventScroll: true });
+  }
+
+  // ── الساعة والجلسة والخادم ──
   function tick() {
     const now = new Date();
     const h = now.getHours();
-    $('greeting').textContent = t(h < 12 ? 'greeting.morning' : h < 18 ? 'greeting.afternoon' : 'greeting.evening');
-    $('date').textContent = now.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    if (app.session) {
+      $('greeting').textContent = t('greeting.withName', { greeting: t(h < 12 ? 'greeting.morning' : h < 18 ? 'greeting.afternoon' : 'greeting.evening'), name: app.session.user.displayName });
+      $('date').textContent = now.toLocaleDateString(TAYL.ui.locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+      const idleMs = app.session.session.idleMinutes * 60000;
+      const left = Math.min(idleMs - (Date.now() - api.lastActivity), app.session.session.expiresAt - Date.now());
+      $('session-state').textContent = t('session.left', { min: Math.max(0, Math.ceil(left / 60000)) });
+      $('session-state').className = 'chip' + (left < WARN_MS ? ' warn' : '');
+      const banner = $('banner');
+      if (serverDown) { banner.hidden = false; banner.replaceChildren(el('span', { text: t('status.unreachable') })); }
+      else if (left <= 0) { window.dispatchEvent(new CustomEvent('tayl:unauthenticated')); }
+      else if (left < WARN_MS) {
+        banner.hidden = false;
+        banner.replaceChildren(el('span', { text: t('session.expiring') }), TAYL.ui.button('session.extend', () => app.refreshSession().catch(() => {}), 'btn small'));
+      } else banner.hidden = true;
+    }
     $('clock').textContent = now.toLocaleTimeString('en-GB');
   }
 
-  function fact(label, value, cls) {
-    const wrap = document.createElement('div');
-    const dt = document.createElement('dt'); dt.textContent = label;
-    const dd = document.createElement('dd'); dd.textContent = value; if (cls) dd.className = cls;
-    wrap.append(dt, dd);
-    return wrap;
+  async function pollHealth() {
+    let down = false;
+    try { const h = await fetch('/api/system/health', { headers: { Accept: 'application/json' } }); down = !h.ok; } catch { down = true; }
+    serverDown = down;
+    const dot = $('server-state');
+    dot.className = 'dot ' + (down ? 'bad' : 'ok');
+    dot.title = t(down ? 'status.fail' : 'status.ok');
+    dot.setAttribute('aria-label', t('status.server') + ': ' + dot.title);
   }
 
-  function renderStatus() {
-    const box = $('status'); box.replaceChildren();
-    $('status-error').hidden = !data.unreachable;
-    if (data.unreachable) { $('status-error').textContent = t('status.unreachable'); box.append(fact(t('status.server'), t('status.fail'), 'bad')); return; }
-    if (!data.health) return;
-    const ok = data.health.status === 'ok';
-    box.append(
-      fact(t('status.server'), ok ? t('status.ok') : t('status.fail'), ok ? 'ok' : 'bad'),
-      fact(t('status.database'), data.health.db === 'ok' ? t('status.ok') : t('status.fail'), data.health.db === 'ok' ? 'ok' : 'bad'),
-      fact(t('status.version'), data.info.version),
-      fact(t('status.migrations'), String(data.info.migrations.length)),
-      fact(t('status.modules'), data.modules ? `${data.modules.roadmap.filter((r) => r.status === 'active').length} / ${data.modules.roadmap.length}` : '—'),
-    );
-  }
+  // ── الأحداث ──
+  window.addEventListener('hashchange', route);
+  window.addEventListener('tayl:unauthenticated', () => {
+    if (!app.session) return;
+    api.clear();
+    showAuth('login', { message: 'auth.sessionExpired', username: app.session.user.username });
+  });
 
-  function renderModules() {
-    if (!data.modules) return;
-    const items = data.modules.roadmap;
-    const lang = window.I18N.lang;
-    const nav = $('nav'); nav.replaceChildren();
-    $('side').scrollTop = 0;
-
-    for (const g of GROUP_ORDER) {
-      const list = items.filter((i) => i.group === g);
-      if (!list.length) continue;
-
-      const ng = document.createElement('div'); ng.className = 'nav-group';
-      const nh = document.createElement('h3'); nh.textContent = t('group.' + g); ng.append(nh);
-
-      for (const it of list) {
-        const name = lang === 'ar' ? it.ar : it.en;
-        const active = it.status === 'active';
-        const a = document.createElement('a'); a.className = 'nav-item'; a.href = '#' + it.id;
-        if (!active) a.setAttribute('aria-disabled', 'true');
-        a.append(document.createTextNode(name));
-        ng.append(a);
-
-      }
-      nav.append(ng);
-    }
-  }
-
-  function renderAll() {
-    $('lang-toggle').textContent = t('lang.switch');
-    tick(); renderStatus(); renderModules();
-  }
-
-  async function getJson(url) {
-    const r = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!r.ok) throw new Error(url + ' ' + r.status);
-    return r.json();
+  async function toggleLang() {
+    await window.I18N.set(window.I18N.lang === 'ar' ? 'en' : 'ar');
+    if (authView) showAuth(authView.kind, authView.opts); else { renderChrome(); route(); }
   }
 
   async function boot() {
-    await window.I18N.init();
-    $('lang-toggle').addEventListener('click', async () => {
-      await window.I18N.set(window.I18N.lang === 'ar' ? 'en' : 'ar');
-      renderAll();
+    let status = null;
+    try { status = await (await fetch('/api/setup/status')).json(); } catch { /* الخادم غير متاح */ }
+    await window.I18N.init(status && status.defaultLanguage);
+    $('lang-toggle').addEventListener('click', toggleLang);
+    $('auth-lang').addEventListener('click', toggleLang);
+    $('logout').addEventListener('click', async () => {
+      try { await api.post('/api/auth/logout'); } catch { /* الجلسة منتهية أصلًا */ }
+      api.clear();
+      showAuth('login', { message: 'auth.loggedOut' });
     });
-    renderAll();
+    $('branch-select').addEventListener('change', async (ev) => {
+      try {
+        app.session = await api.post('/api/auth/branch', { branchId: Number.parseInt(ev.target.value, 10) });
+        toast(t('session.branchSwitched', { code: app.session.branch.code }));
+        route();
+      } catch (e) { toast(errorText(e), 'bad'); renderChrome(); }
+    });
     setInterval(tick, 1000);
-    try {
-      const [health, info, modules] = await Promise.all([getJson('/api/system/health'), getJson('/api/system/info'), getJson('/api/system/modules')]);
-      data = { health, info, modules, unreachable: false };
-    } catch { data.unreachable = true; }
-    renderAll();
+    setInterval(pollHealth, 30000);
+    tick();
+
+    if (!status) return showAuth('error');
+    if (!status.setupCompleted) return showAuth('setup');
+    try { app.start(await api.get('/api/auth/session', { quiet401: true })); } catch { showAuth('login'); }
+    pollHealth();
   }
   boot();
 })();
