@@ -9,6 +9,8 @@ const DEFS = Object.freeze({
   loginMaxFailures:     { def: 5,  min: 3, max: 20 },     // محاولات فاشلة قبل القفل المؤقت
   loginLockMinutes:     { def: 15, min: 1, max: 1440 },   // مدة القفل المؤقت
   passwordMinLength:    { def: 8,  min: 8, max: 64 },
+  // [م3] فصل المهام في القيود (اختياري): 1 = من أنشأ المسودة أو عدّلها آخر مرة لا يرحّلها
+  journalSegregatePosting: { def: 0, min: 0, max: 1 },
 });
 
 function createSettingsService({ db, audit }) {

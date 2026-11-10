@@ -14,7 +14,8 @@ function createAccountService(services) {
   const svc = createMasterService(services, {
     entity: 'account', table: 'accounts', source: 'chart-accounts', tree: true, titleKey: 'nav.accounts',
     columns: [['code', 'code'], ['nameAr', 'name_ar'], ['nameEn', 'name_en'], ['parentId', 'parent_id'], ['classCode', 'class_code'],
-      ['typeId', 'type_id'], ['normalBalance', 'normal_balance'], ['isGroup', 'is_group'], ['sortOrder', 'sort_order'], ['description', 'description']],
+      ['typeId', 'type_id'], ['normalBalance', 'normal_balance'], ['isGroup', 'is_group'], ['sortOrder', 'sort_order'], ['description', 'description'],
+      ['costCenterPolicy', 'cost_center_policy'], ['allowManualEntry', 'allow_manual_entry']],   // [م3] سياسة الترحيل
     validate(body, { partial }) {
       const d = validator(body, { partial })
         .str('code', { required: true, upper: true, pattern: CODE_RE, max: 30 })
@@ -27,8 +28,13 @@ function createAccountService(services) {
         .bool('isGroup')
         .int('sortOrder', { min: 0, max: 1e9 })
         .str('description', { max: 500, multiline: true })
+        .oneOf('costCenterPolicy', ['none', 'optional', 'required'])
+        .bool('allowManualEntry')
         .done();
       if ('isGroup' in d) d.isGroup = d.isGroup ? 1 : 0;
+      if ('allowManualEntry' in d) d.allowManualEntry = d.allowManualEntry ? 1 : 0;
+      if (d.costCenterPolicy === null) delete d.costCenterPolicy;
+      if (d.allowManualEntry === null) delete d.allowManualEntry;
       return d;
     },
     /** التصنيف يُورَث من الأب ويجب أن يطابقه؛ النوع من نفس التصنيف؛ الطبيعة افتراضيًا من النوع ثم التصنيف. */
@@ -65,7 +71,8 @@ function createAccountService(services) {
     toApi: (r) => ({
       id: r.id, code: r.code, nameAr: r.name_ar, nameEn: r.name_en, parentId: r.parent_id, level: r.level, classCode: r.class_code,
       typeId: r.type_id, normalBalance: r.normal_balance, isGroup: r.is_group === 1, isActive: r.is_active === 1, sortOrder: r.sort_order,
-      description: r.description, createdAt: r.created_at, updatedAt: r.updated_at,
+      description: r.description, costCenterPolicy: r.cost_center_policy, allowManualEntry: r.allow_manual_entry === 1,
+      createdAt: r.created_at, updatedAt: r.updated_at,
     }),
     filters: {
       classCode: (v) => (CLASSES.includes(v) ? { sql: 'class_code = ?', params: [v] } : null),

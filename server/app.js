@@ -34,6 +34,9 @@ const MODULES = [
   require('./modules/treasury'),
   require('./modules/payment-terms'),
   require('./modules/units'),
+  // المرحلة 3: ترقيم المستندات، القيود اليومية والأستاذ العام ومحرك الترحيل
+  require('./modules/numbering'),
+  require('./modules/journal'),
 ];
 
 async function createApp({ config, logger, modules = MODULES }) {

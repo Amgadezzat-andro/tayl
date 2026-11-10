@@ -51,8 +51,12 @@ TAYL.combobox = (() => {
       });
       if (hasMore) list.append(el('li', { class: 'cb-msg', text: t('combo.more') }));
       input.setAttribute('aria-activedescendant', active >= 0 ? `${uid}-o${active}` : '');
+      // تمرير القائمة نفسها فقط: scrollIntoView كان يمرر الصفحة كلها أفقيًا داخل الجداول القابلة للتمرير
       const a = list.querySelector('.active');
-      if (a) a.scrollIntoView({ block: 'nearest' });
+      if (a) {
+        if (a.offsetTop < list.scrollTop) list.scrollTop = a.offsetTop;
+        else if (a.offsetTop + a.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = a.offsetTop + a.offsetHeight - list.clientHeight;
+      }
       status.textContent = items.length ? t('combo.count', { n: items.length }) : t('combo.noResults');
     }
     async function load(append = false) {

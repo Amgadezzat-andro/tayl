@@ -12,12 +12,13 @@ TAYL.views.dashboard = (() => {
   }
 
   async function render(root, app) {
-    const [dash, health, info, modules] = await Promise.all([
+    const [dash, health, info, modules, ledger] = await Promise.all([
       api.get('/api/dashboard'),
+      app.can(['ledger.view', 'journal.view']) ? api.get('/api/ledger/status').catch(() => null) : null,
       api.get('/api/system/health').catch(() => null),
       api.get('/api/system/info').catch(() => null),
       api.get('/api/system/modules').catch(() => null),
-    ]);
+    ]).then(([d, l, h, i, m]) => [d, h, i, m, l]);
     const s = app.session;
     const ok = health && health.status === 'ok';
 
@@ -34,7 +35,12 @@ TAYL.views.dashboard = (() => {
           badge(it.status === 'active' ? 'dash.moduleActive' : 'dash.modulePlanned', it.status === 'active' ? 'ok' : 'muted')))));
     }) : null;
 
+    // P9: سنة مالية انتهت ولم تُقفل (لا إقفال قبل المرحلة 4) ⇒ نتائج ما بعدها غير نهائية
+    const yearWarnings = ledger && ledger.warnings.length ? el('div', { class: 'notice warn', role: 'status' },
+      ledger.warnings.map((w) => el('p', { text: t('ledger.yearEndedNotClosed', { year: w.year.code, end: w.year.endDate }) }))) : null;
+
     TAYL.ui.fill(root,
+      yearWarnings,
       el('div', { class: 'cards' },
         panel('dash.company',
           el('dl', { class: 'facts' },

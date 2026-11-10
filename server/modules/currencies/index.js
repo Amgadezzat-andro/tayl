@@ -215,7 +215,7 @@ module.exports = {
     router.post('/api/currencies/rates/:rateId/void', { permission: 'currencies.manage_rates' }, async (ctx) => reviseRate(ctx, idParam(ctx.params.rateId), 'void', await ctx.body()));
     router.get('/api/currencies', { permission: 'currencies.view' }, withBase((ctx) => svc.list(ctx, ctx.query)));
     router.get('/api/currencies/lookup', { auth: true }, withBase((ctx) => {
-      if (!['currencies.view', 'treasury.create', 'treasury.update'].some((p) => ctx.access.can(p))) throw new HttpError(403, 'FORBIDDEN', 'لا تملك صلاحية تنفيذ هذه العملية');
+      if (!['currencies.view', 'treasury.create', 'treasury.update', 'journal.create', 'journal.update', 'ledger.view'].some((p) => ctx.access.can(p))) throw new HttpError(403, 'FORBIDDEN', 'لا تملك صلاحية تنفيذ هذه العملية');
       return svc.lookup(ctx, ctx.query);
     }));
     registerMasterRoutes(router, svc, { base: '/api/currencies', resource: 'currencies', exportFile: 'currencies' });

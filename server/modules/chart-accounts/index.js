@@ -42,7 +42,7 @@ module.exports = {
     router.get('/api/accounts/classes', { permission: 'accounts.view' }, () => accounts.classes());
     registerMasterRoutes(router, accounts, {
       base: '/api/accounts', resource: 'accounts', tree: true, exportFile: 'chart-of-accounts',
-      lookupPerms: ['treasury.create', 'treasury.update'],
+      lookupPerms: ['treasury.create', 'treasury.update', 'journal.create', 'journal.update', 'ledger.view'],   // [م3] سطور القيود والتقارير
     });
     registerMasterRoutes(router, types, { base: '/api/account-types', resource: 'accounts', exportFile: 'account-types' });
 

@@ -32,6 +32,8 @@ function validateBranch(body, { partial = false } = {}) {
 const isUniqueViolation = (e) => e && e.code === 'SQLITE_CONSTRAINT_UNIQUE';
 
 function createBranchService({ db, audit }) {
+  // [م3] حراس تغيير كود الفرع تسجّلها وحدات أخرى (الترقيم: لا يُعاد كود ظهر في أرقام فرع آخر)
+  const codeGuards = [];
   const byId = (id) => db.prepare('SELECT * FROM branches WHERE id = ?').get(id);
 
   function insert(data, { isMain = false } = {}) {
@@ -69,6 +71,8 @@ function createBranchService({ db, audit }) {
       });
     },
 
+    registerCodeGuard(fn) { codeGuards.push(fn); },
+
     update(ctx, id, body) {
       const data = validateBranch(body, { partial: true });
       const v = validator(body || {}, { partial: true }).bool('isMain').done();
@@ -76,6 +80,7 @@ function createBranchService({ db, audit }) {
         const before = byId(id);
         if (!before) throw new HttpError(404, 'NOT_FOUND', 'الفرع غير موجود');
         const changes = FIELDS.filter(([api]) => api in data);
+        if ('code' in data && data.code !== before.code) for (const g of codeGuards) g(before, data.code);
         if (changes.length) {
           try {
             db.prepare(`UPDATE branches SET ${changes.map(([, c]) => `${c} = ?`).join(', ')}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`)

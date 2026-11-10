@@ -8,11 +8,13 @@
   const { el, t, toast, errorText, panel } = TAYL.ui;
   const api = TAYL.api;
   const $ = (id) => document.getElementById(id);
-  // القائمة مجمّعة: الرئيسية، الإعداد المحاسبي (م2)، البيانات المرجعية (م2)، الإدارة، الحساب
+  // القائمة مجمّعة: الرئيسية، الإعداد المحاسبي (م2)، البيانات المرجعية (م2)، الأستاذ العام (م3)، الإدارة، الحساب
   const NAV = [
     { group: null, items: ['dashboard'] },
     { group: 'nav.group.accounting', items: ['accounts', 'costCenters', 'treasury', 'currencies', 'fiscalYears'] },
     { group: 'nav.group.reference', items: ['paymentTerms', 'paymentMethods', 'units'] },
+    // المرحلة 3: القيود والأستاذ العام وتقاريره
+    { group: 'nav.group.ledger', items: ['journal', 'openingEntries', 'journalRegister', 'accountStatement', 'trialBalance', 'documentSeries'] },
     { group: 'nav.group.admin', items: ['company', 'branches', 'users', 'roles', 'settings', 'audit'] },
     { group: null, items: ['account'] },
   ];

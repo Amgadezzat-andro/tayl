@@ -21,7 +21,7 @@ const serverFiles = files(path.join(ROOT, 'server'), '.js');
 const serverSrc = serverFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 
 test('i18n-ui: كل مفتاح ترجمة حرفي مستخدم في الواجهة موجود باللغتين', () => {
-  const NS = /^(app|support|lang|greeting|status|group|common|setup|auth|session|nav|dash|company|branch|user|role|perm|settings|precision|kind|rounding|audit|account|err|val|currency|accClass|nature|cc|treasury|fiscal|period|pt|pm|unit|combo|grid|keys|import|master)\./;
+  const NS = /^(app|support|lang|greeting|status|group|common|setup|auth|session|nav|dash|company|branch|user|role|perm|settings|precision|kind|rounding|audit|account|err|val|currency|accClass|nature|cc|treasury|fiscal|period|pt|pm|unit|combo|grid|keys|import|master|journal|ledger|series)\./;   // [م3] journal/ledger/series
   let n = 0;
   for (const f of jsFiles) {
     const src = fs.readFileSync(f, 'utf8');
@@ -29,7 +29,7 @@ test('i18n-ui: كل مفتاح ترجمة حرفي مستخدم في الواج�
       const key = m[1];
       if (!NS.test(key) || key.endsWith('.')) continue;
       // صلاحيات تُمرَّر لـ app.can وليست مفاتيح ترجمة
-      if (/^(company|branches|users|roles|settings|precision|audit|accounts|treasury|currencies|units)\.(view|create|update|delete|disable|print|export|import|manage_rates|view_sensitive)$/.test(key) && !ar[key]) continue;
+      if (/^(company|branches|users|roles|settings|precision|audit|accounts|treasury|currencies|units|journal|ledger)\.(view|create|update|delete|disable|print|export|import|manage_rates|view_sensitive|post|reverse|opening|override_rate)$/.test(key) && !ar[key]) continue;
       both(key); n++;
     }
   }

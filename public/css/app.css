@@ -242,3 +242,47 @@ tr.row-error td { background: var(--err-soft); }
   .print-area th, .print-area td { border: 1px solid #999; padding: 3px 6px; text-align: start; }
 }
 .page:focus-visible, .page:focus { outline: none; }   /* التركيز البرمجي بعد التنقل لا يُظهر إطارًا */
+
+/* ── المرحلة 3: القيود والأستاذ العام ── */
+.toast.warn { background: var(--warn); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.inline-label { font-size: .85rem; color: var(--muted); }
+.num-col { text-align: end; white-space: nowrap; }
+.form-actions.start { justify-content: flex-start; }
+.je-lines table { min-width: 900px; }
+.je-lines td { vertical-align: top; padding: 4px 3px; }
+.je-lines td.ln { color: var(--muted); width: 28px; text-align: center; padding-top: 10px; }
+.je-lines td.acc { min-width: 180px; }
+.je-lines td.cc { min-width: 120px; }
+.je-lines input.desc { min-width: 90px; }
+.je-lines select.cur { min-width: 76px; }
+.je-lines input, .je-lines select { width: 100%; }
+.je-lines input.amt { min-width: 88px; text-align: end; }
+.je-lines input[aria-invalid="true"], .je-form input[aria-invalid="true"] { border-color: var(--err); background: var(--err-soft); }
+.je-lines .rate-wrap { display: flex; gap: 4px; align-items: center; }
+.je-lines input.rate { min-width: 84px; text-align: end; }
+.je-lines input.rate[readonly] { background: var(--page); color: var(--muted); }
+.je-lines input.reason { margin-top: 4px; font-size: .85rem; }
+.je-lines td.base { padding-top: 10px; min-width: 100px; }
+.je-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.je-totals { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; padding: 10px 12px; margin-top: 10px; border-radius: 8px; background: var(--page); font-weight: 600; }
+.je-totals .ok { color: var(--ok); } .je-totals .bad { color: var(--err); }
+.je-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.je-number { margin: 0; font-size: 1.3rem; }
+tr.total-row td, tfoot td { font-weight: 700; background: var(--page); }
+tr.group-row td { font-weight: 600; background: #fafbfc; }
+table.tb th { text-align: center; }
+table.compact td, table.compact th { padding: 4px 8px; }
+.jr-doc { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 10px 0; }
+.jr-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-bottom: 6px; }
+.jr-desc { font-weight: 600; }
+.finality ul { margin: 4px 0 0; padding-inline-start: 18px; font-weight: 400; }
+.report-filters .cb-inline { min-width: 200px; flex: 1 1 200px; max-width: 320px; }
+.report-filters input[type="date"], .filters input[type="date"] { width: auto; }
+.report-filters .cb-inline.wide { max-width: 420px; }
+.report-out { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+@media (max-width: 860px) {
+  .je-lines, .report-out .table-wrap { overflow-x: auto; }
+  .report-filters .cb-inline { max-width: none; }
+}
+@media print { .je-totals { background: none; } .jr-doc { break-inside: avoid; } }

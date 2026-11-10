@@ -127,7 +127,10 @@ function createHttpServer({ router, config, logger, services }) {
       if (!res.writableEnded && !res.headersSent) sendJson(res, 200, result === undefined ? { ok: true } : result);
     } catch (err) {
       // قيمة عشرية غير صالحة من المستخدم = خطأ إدخال (400) وليس خطأ خادم.
-      const e = err instanceof DecimalError ? new HttpError(400, 'DECIMAL_' + err.code, err.message) : err;
+      // [م3] انتهاء انتظار قفل SQLite (busy_timeout) = 503 قابل لإعادة المحاولة، لا خطأ داخلي مبهم؛ المعاملة أُلغيت كاملة.
+      const e = err instanceof DecimalError ? new HttpError(400, 'DECIMAL_' + err.code, err.message)
+        : err && err.code === 'SQLITE_BUSY' ? new HttpError(503, 'DB_BUSY', 'قاعدة البيانات مشغولة مؤقتًا؛ أعد المحاولة')
+          : err;
       const known = e instanceof HttpError;
       if (!known) logger.error('unhandled', { requestId, err: String(e && e.stack || e) });
       if (res.headersSent) return res.end();

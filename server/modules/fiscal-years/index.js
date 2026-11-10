@@ -12,6 +12,11 @@ const { writeSheet, sendXlsx } = require('../../core/xlsx');
  *  - الحالة: open → closed (صلاحية close) → open (صلاحية reopen الخاصة) أو → locked (نهائي، صلاحية lock).
  *  - كل تغيير حالة يتطلب سببًا ويُسجَّل في fiscal_period_events وفي سجل التدقيق.
  *  - للمستندات القادمة: services.fiscal.assertOpen(date) قبل اعتماد أي مستند.
+ *  - [م3] ضوابط القسم 7 من مقترح المرحلة 3 (الخادم + triggers في 0002):
+ *    P2 القفل النهائي بالتسلسل عبر كل الفترات السابقة (ذري: الفحص والتحديث في معاملة BEGIN IMMEDIATE واحدة)،
+ *    P3 تحذير عند إغلاق فترة وقبلها فترة مفتوحة، P4 إعادة فتح فترة بها قيود مرحّلة تتطلب تأكيدًا صريحًا،
+ *    P5 السنوات متصلة بلا فجوات (والحذف للسنة الأولى أو الأخيرة فقط)، P6 عبر yearGuards تسجّلها وحدة القيود.
+ *    finality(from, to) لنهائية التقارير، endedYears(today) لتحذير P9.
  */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CODE_RE = /^[A-Z0-9][A-Z0-9._-]{0,29}$/;
@@ -81,6 +86,11 @@ module.exports = {
     }
     const yearRow = (id) => db.prepare('SELECT * FROM fiscal_years WHERE id = ?').get(id);
     const notFound = () => new HttpError(404, 'NOT_FOUND', 'غير موجود');
+    const nextDay = (s) => { const d = parse(s); d.setUTCDate(d.getUTCDate() + 1); return d2s(d); };
+    // [م3] وحدات أخرى تسجّل: نشاط الفترة (عدد المستندات المرحّلة فيها) وحراس إنشاء السنة (P6)
+    const periodActivity = new Map();
+    const yearGuards = [];
+    const postedIn = (periodId) => [...periodActivity.values()].reduce((n, fn) => n + fn(db, periodId), 0);
 
     function createYear(ctx, body) {
       const v = validator(body)
@@ -98,6 +108,16 @@ module.exports = {
       return inTransaction(db, () => {
         const clash = db.prepare('SELECT code FROM fiscal_years WHERE ? <= end_date AND ? >= start_date').get(v.startDate, v.endDate);
         if (clash) throw new HttpError(409, 'FISCAL_OVERLAP', 'السنة المالية تتداخل مع سنة أخرى', { with: clash.code });
+        // P5: تلي آخر سنة مباشرة أو تسبق أول سنة مباشرة
+        const b = db.prepare('SELECT min(start_date) first, max(end_date) last FROM fiscal_years').get();
+        if (b.first && v.startDate !== nextDay(b.last) && nextDay(v.endDate) !== b.first) {
+          throw new HttpError(409, 'FISCAL_YEAR_GAP', 'السنوات المالية متصلة: تبدأ السنة الجديدة في اليوم التالي لنهاية آخر سنة', { expectedStart: nextDay(b.last) });
+        }
+        // P2: سنة قبل الأولى ستضع فترات مفتوحة قبل فترة مغلقة/مقفلة
+        if (b.first && v.startDate < b.first && db.prepare("SELECT 1 FROM fiscal_periods WHERE status <> 'open' LIMIT 1").get()) {
+          throw new HttpError(409, 'FISCAL_YEAR_BEFORE_CLOSED', 'لا تُضاف سنة قبل أول سنة بعد إغلاق أو قفل أي فترة');
+        }
+        for (const g of yearGuards) g(v);                       // P6 وأمثاله
         let id;
         try {
           id = Number(db.prepare('INSERT INTO fiscal_years (code, name_ar, name_en, start_date, end_date, period_type, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -138,6 +158,8 @@ module.exports = {
         if (!y) throw notFound();
         const ps = periodsOf(id);
         if (ps.some((p) => p.status !== 'open')) throw new HttpError(409, 'FISCAL_YEAR_NOT_OPEN', 'لا تُحذف سنة بها فترات مغلقة');
+        const around = db.prepare('SELECT (SELECT count(*) FROM fiscal_years WHERE start_date < ?) before, (SELECT count(*) FROM fiscal_years WHERE start_date > ?) after').get(y.start_date, y.start_date);
+        if (around.before && around.after) throw new HttpError(409, 'FISCAL_YEAR_NOT_EDGE', 'لا تُحذف سنة في الوسط (تترك فجوة)؛ الأولى أو الأخيرة فقط');
         const used = ps.flatMap((p) => usage.usedBy('fiscal_period', p.id));
         if (used.length) throw new HttpError(409, 'IN_USE', 'السنة مستخدمة في مستندات', { usedBy: [...new Set(used)] });
         if (db.prepare('SELECT 1 FROM fiscal_period_events e JOIN fiscal_periods p ON p.id = e.period_id WHERE p.fiscal_year_id = ? LIMIT 1').get(id)) {
@@ -152,19 +174,35 @@ module.exports = {
 
     const TRANSITIONS = { close: ['open', 'closed', 'closed'], reopen: ['closed', 'open', 'reopened'], lock: ['closed', 'locked', 'locked'] };
     function changeStatus(ctx, periodId, op, body) {
-      const { reason } = validator(body).str('reason', { required: true, min: 3, max: 500, multiline: true }).done();
+      const { reason, confirm } = validator(body).str('reason', { required: true, min: 3, max: 500, multiline: true }).bool('confirm').done();
       const [from, to, action] = TRANSITIONS[op];
+      // الفحص والتحديث في معاملة BEGIN IMMEDIATE واحدة: لا يتغير شيء بينهما (P2 ذري)
       return inTransaction(db, () => {
         const p = db.prepare('SELECT p.*, y.code year_code FROM fiscal_periods p JOIN fiscal_years y ON y.id = p.fiscal_year_id WHERE p.id = ?').get(periodId);
         if (!p) throw notFound();
         if (p.status !== from) throw new HttpError(409, 'PERIOD_STATUS', 'حالة الفترة لا تسمح بهذا الإجراء', { status: p.status, required: from });
+        const earlier = (cond) => db.prepare(`SELECT id, name_ar nameAr, name_en nameEn, start_date startDate, status FROM fiscal_periods WHERE start_date < ? AND ${cond} ORDER BY start_date`).all(p.start_date);
+        const warnings = [];
+        if (op === 'lock') {                                     // P2
+          const blocking = earlier("status <> 'locked'");
+          if (blocking.length) throw new HttpError(409, 'PERIOD_LOCK_SEQUENCE', 'اقفل الفترات السابقة أولًا (القفل النهائي بالتسلسل)', { periods: blocking });
+        }
+        if (op === 'close') {                                    // P3 (تحذير فقط)
+          const open = earlier("status = 'open'");
+          if (open.length) warnings.push({ code: 'EARLIER_PERIODS_OPEN', periods: open });
+        }
+        let postedEntries = 0;
+        if (op === 'reopen') {                                   // P4
+          postedEntries = postedIn(p.id);
+          if (postedEntries > 0 && confirm !== true) throw new HttpError(409, 'REOPEN_CONFIRM_REQUIRED', 'الفترة بها قيود مرحّلة؛ يلزم تأكيد صريح لإعادة فتحها', { postedEntries });
+        }
         db.prepare("UPDATE fiscal_periods SET status = ?, status_changed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), status_changed_by = ?, status_reason = ? WHERE id = ?")
           .run(to, ctx.user.id, reason, periodId);
         db.prepare('INSERT INTO fiscal_period_events (period_id, action, from_status, to_status, reason, user_id, username) VALUES (?, ?, ?, ?, ?, ?, ?)')
           .run(periodId, action, from, to, reason, ctx.user.id, ctx.user.username);
         audit.fromCtx(ctx, { action: `fiscal_period.${action}`, source: 'fiscal-years', entityType: 'fiscal_period', entityId: periodId,
-          details: { year: p.year_code, seq: p.seq, startDate: p.start_date, endDate: p.end_date, from, to, reason } });
-        return periodApi(db.prepare('SELECT * FROM fiscal_periods WHERE id = ?').get(periodId));
+          details: { year: p.year_code, seq: p.seq, startDate: p.start_date, endDate: p.end_date, from, to, reason, ...(op === 'reopen' ? { postedEntries, confirmed: confirm === true } : {}), ...(warnings.length ? { warnings: warnings.map((w) => w.code) } : {}) } });
+        return { ...periodApi(db.prepare('SELECT * FROM fiscal_periods WHERE id = ?').get(periodId)), warnings };
       });
     }
 
@@ -181,7 +219,31 @@ module.exports = {
       if (p.status !== 'open') throw new HttpError(409, 'PERIOD_NOT_OPEN', 'الفترة المالية غير مفتوحة', { date, status: p.status, period: p.id });
       return p;
     }
-    services.fiscal = { periodFor, assertOpen, generatePeriods };
+    /**
+     * نهائية تقرير يغطي [from, to] (المقترح 7.3): نهائي فقط إن كانت كل فتراته مقفلة نهائيًا ولا سنة مالية قبله
+     * (الإقفال السنوي غير متاح قبل المرحلة 4، فأي نطاق بعد أول سنة غير نهائي).
+     */
+    function finality(from, to) {
+      const reasons = [];
+      const ps = db.prepare('SELECT p.status, y.start_date ys FROM fiscal_periods p JOIN fiscal_years y ON y.id = p.fiscal_year_id WHERE p.start_date <= ? AND p.end_date >= ?').all(to, from);
+      if (!ps.length) reasons.push({ code: 'NO_FISCAL_PERIOD' });
+      if (ps.some((p) => p.status === 'open')) reasons.push({ code: 'PERIOD_OPEN' });
+      if (ps.some((p) => p.status === 'closed')) reasons.push({ code: 'PERIOD_NOT_LOCKED' });
+      // أيام من النطاق لا تغطيها فترة معرّفة (السنوات متصلة بـ P5، فيكفي فحص الطرفين) — قد تُضاف سنة ويُرحَّل فيها لاحقًا
+      const cover = db.prepare('SELECT min(start_date) s, max(end_date) e FROM fiscal_periods').get();
+      if (ps.length && (!cover.s || cover.s > from || cover.e < to)) reasons.push({ code: 'RANGE_NOT_COVERED' });
+      const prior = db.prepare('SELECT code, end_date endDate FROM fiscal_years WHERE start_date < ? ORDER BY start_date').all(ps.length ? ps.reduce((m, p) => (p.ys < m ? p.ys : m), ps[0].ys) : from);
+      if (prior.length) reasons.push({ code: 'PRIOR_YEAR_NOT_CLOSED', years: prior.map((y) => y.code) });
+      return { final: reasons.length === 0, reasons };
+    }
+    /** P9: السنوات التي انتهى تاريخها ولم تُقفل (لا إقفال قبل المرحلة 4 ⇒ كل سنة منتهية). */
+    const endedYears = (today) => db.prepare('SELECT id, code, name_ar nameAr, name_en nameEn, start_date startDate, end_date endDate FROM fiscal_years WHERE end_date < ? ORDER BY start_date').all(today);
+
+    services.fiscal = {
+      periodFor, assertOpen, generatePeriods, finality, endedYears,
+      registerPeriodActivity: (name, fn) => periodActivity.set(name, fn),
+      registerYearGuard: (fn) => yearGuards.push(fn),
+    };
 
     function exportData(lang) {
       const t = (k) => services.i18n.t(lang, k);

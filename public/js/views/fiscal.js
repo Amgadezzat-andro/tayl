@@ -37,7 +37,20 @@ TAYL.views.fiscalYears = (() => {
     const f = form({
       submitKey: 'fiscal.op.' + op,
       fields: [{ name: 'reason', label: 'fiscal.reason', type: 'textarea', required: true, full: true, hint: op === 'lock' ? 'fiscal.lockWarning' : 'fiscal.reasonHint' }],
-      async onSubmit(v) { await api.post(`/api/fiscal-periods/${period.id}/${op}`, v); close(); toast(t('common.saved')); reload(); },
+      async onSubmit(v) {
+        let r;
+        try { r = await api.post(`/api/fiscal-periods/${period.id}/${op}`, v); } catch (e) {
+          // P4: الفترة بها قيود مرحّلة ⇒ تأكيد صريح بعددها ثم إعادة الطلب
+          if (e.code !== 'REOPEN_CONFIRM_REQUIRED') throw e;
+          if (!(await confirm(t('fiscal.reopenConfirm', { n: e.details.postedEntries }), { danger: true, okKey: 'fiscal.op.reopen' }))) return;
+          r = await api.post(`/api/fiscal-periods/${period.id}/${op}`, { ...v, confirm: true });
+        }
+        close();
+        // P3: تحذير عند إغلاق فترة وقبلها فترة مفتوحة
+        if (r.warnings && r.warnings.length) toast(t('fiscal.warn.EARLIER_PERIODS_OPEN', { periods: r.warnings[0].periods.map((p) => name(p)).join(t('common.listSep')) }), 'warn');
+        else toast(t('common.saved'));
+        reload();
+      },
     });
     const close = modal({ title: `${t('fiscal.op.' + op)} — ${name(period)}`, body: f.node });
   }

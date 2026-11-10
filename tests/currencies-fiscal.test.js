@@ -97,7 +97,8 @@ test('fiscal: سنة لا تبدأ في يناير ⇒ 12 فترة متصلة، 
   const q = (await F({ code: 'FY2027Q', nameAr: 'ربع سنوي', nameEn: 'Quarterly', startDate: '2027-07-01', endDate: '2028-06-30', periodType: 'quarterly' })).body;
   assert.equal(q.periodCount, 4);
   // دفاع القاعدة: إدخال مباشر متداخل يُرفض
-  assert.throws(() => s.app.db.prepare("INSERT INTO fiscal_years (code,name_ar,name_en,start_date,end_date,period_type) VALUES ('Z','z','z','2026-12-01','2027-01-31','monthly')").run(), /overlap/);
+  // [م3] السنة المتداخلة غير متصلة أيضًا (P5)، فقد يرفضها أيٌّ من الـ triggers — المهم أن القاعدة ترفضها
+  assert.throws(() => s.app.db.prepare("INSERT INTO fiscal_years (code,name_ar,name_en,start_date,end_date,period_type) VALUES ('Z','z','z','2026-12-01','2027-01-31','monthly')").run(), /overlap|contiguous/);
   assert.throws(() => s.app.db.prepare("INSERT INTO fiscal_periods (fiscal_year_id,seq,name_ar,name_en,start_date,end_date) VALUES (?,99,'z','z','2026-07-15','2026-07-20')").run(y.id), /overlap/);
   assert.throws(() => s.app.db.prepare("UPDATE fiscal_periods SET end_date = '2026-08-15' WHERE id = ?").run(y.periods[0].id), /fixed/);
 });
@@ -121,16 +122,20 @@ test('fiscal: الإغلاق وإعادة الفتح والقفل النهائي
   assert.equal((await sub.client.post('/api/roles', { nameAr: 'نسخة', nameEn: 'Copy', permissions: ['fiscal_years.lock'] })).body.error.code, 'SUPER_ADMIN_ONLY');
   assert.equal((await s.admin.post(`/api/fiscal-periods/${feb}/lock`, { reason: 'قفل' })).body.error.code, 'PERIOD_STATUS');
   await s.admin.post(`/api/fiscal-periods/${feb}/close`, { reason: 'إغلاق فبراير' });
+  // [م3] P2: القفل النهائي بالتسلسل — فبراير لا يُقفل ويناير غير مقفل
+  assert.equal((await s.admin.post(`/api/fiscal-periods/${feb}/lock`, { reason: 'اعتماد نهائي بعد المراجعة' })).body.error.code, 'PERIOD_LOCK_SEQUENCE');
+  await s.admin.post(`/api/fiscal-periods/${jan}/close`, { reason: 'إغلاق يناير' });
+  assert.equal((await s.admin.post(`/api/fiscal-periods/${jan}/lock`, { reason: 'اعتماد يناير' })).body.status, 'locked');
   assert.equal((await s.admin.post(`/api/fiscal-periods/${feb}/lock`, { reason: 'اعتماد نهائي بعد المراجعة' })).body.status, 'locked');
   assert.equal((await s.admin.post(`/api/fiscal-periods/${feb}/reopen`, { reason: 'محاولة' })).body.error.code, 'PERIOD_STATUS');
   assert.throws(() => s.app.db.prepare("UPDATE fiscal_periods SET status = 'open' WHERE id = ?").run(feb), /final/);
   // السجل: من ومتى ولماذا — إضافة فقط، وفي التدقيق أيضًا
   const ev = (await s.admin.get(`/api/fiscal-periods/${jan}/events`)).body;
-  assert.deepEqual(ev.map((e) => [e.action, e.username]), [['closed', 'closer'], ['reopened', 'reopener']]);
+  assert.deepEqual(ev.map((e) => [e.action, e.username]), [['closed', 'closer'], ['reopened', 'reopener'], ['closed', 'admin'], ['locked', 'admin']]);
   assert.equal(ev[1].reason, 'تصحيح خطأ في التسوية');
   assert.throws(() => s.app.db.prepare('DELETE FROM fiscal_period_events').run(), /append-only/);
   const acts = s.app.db.prepare("SELECT action, details FROM audit_log WHERE action LIKE 'fiscal_period.%' ORDER BY id").all();
-  assert.deepEqual(acts.map((a) => a.action), ['fiscal_period.closed', 'fiscal_period.reopened', 'fiscal_period.closed', 'fiscal_period.locked']);
+  assert.deepEqual(acts.map((a) => a.action), ['fiscal_period.closed', 'fiscal_period.reopened', 'fiscal_period.closed', 'fiscal_period.closed', 'fiscal_period.locked', 'fiscal_period.locked']);
   assert.equal(JSON.parse(acts[1].details).reason, 'تصحيح خطأ في التسوية');
   // سنة بها فترة غير مفتوحة لا تُحذف
   assert.equal((await s.admin.del('/api/fiscal-years/' + y.id)).body.error.code, 'FISCAL_YEAR_NOT_OPEN');

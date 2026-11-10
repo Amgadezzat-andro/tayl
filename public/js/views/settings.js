@@ -11,16 +11,21 @@ TAYL.views.settings = (() => {
   const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
   function securityPanel(app, s) {
+    const isFlag = (k) => s.limits[k].min === 0 && s.limits[k].max === 1;
     const canEdit = app.can('settings.update');
     const f = form({
       readOnly: !canEdit,
-      fields: Object.keys(s.values).map((k) => ({
+      // الإعداد ذو القيمتين 0/1 (مثل فصل المهام) يُعرض كخانة اختيار ويُرسل 0/1 كما يتوقع الخادم
+      fields: Object.keys(s.values).map((k) => (isFlag(k) ? { name: k, label: 'settings.' + k, type: 'checkbox', value: s.values[k] === 1, hint: 'settings.' + k + 'Hint' } : {
         name: k, label: 'settings.' + k, type: 'number', required: true, value: s.values[k], min: s.limits[k].min, max: s.limits[k].max, inputmode: 'numeric', dir: 'ltr',
         hint: null,
       })),
-      async onSubmit(v) { await api.put('/api/settings', v); toast(t('common.saved')); app.rerender(); },
+      async onSubmit(v) {
+        const body = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, isFlag(k) ? (x ? 1 : 0) : x]));
+        await api.put('/api/settings', body); toast(t('common.saved')); app.rerender();
+      },
     });
-    for (const k of Object.keys(s.values)) {
+    for (const k of Object.keys(s.values).filter((x) => !isFlag(x))) {
       const p = el('p', { class: 'hint', text: t('settings.range', { min: s.limits[k].min, max: s.limits[k].max, def: s.limits[k].default }) });
       f.inputs[k].input.after(p);
     }

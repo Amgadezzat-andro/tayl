@@ -101,7 +101,8 @@ module.exports = {
           FROM cost_centers c LEFT JOIN branches b ON b.id = c.branch_id ${scope} GROUP BY b.id ORDER BY b.code`).all(...(ids || [])),
       };
     });
-    registerMasterRoutes(router, centers, { base: '/api/cost-centers', resource: 'cost_centers', tree: true, exportFile: 'cost-centers' });
+    registerMasterRoutes(router, centers, { base: '/api/cost-centers', resource: 'cost_centers', tree: true, exportFile: 'cost-centers',
+      lookupPerms: ['journal.create', 'journal.update', 'ledger.view'] });   // [م3] سطور القيود والتقارير
     registerMasterRoutes(router, types, { base: '/api/cost-center-types', resource: 'cost_centers', exportFile: 'cost-center-types' });
 
     registerImportRoutes(router, {
