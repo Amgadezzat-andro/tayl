@@ -14,6 +14,11 @@ const { inTransaction } = require('../../core/db');
  * المبالغ الأساسية: السطور تُجمَّع حسب (العملة، السعر، الطرف)؛ مجموع كل مجموعة يُحوَّل مرة واحدة بسياسة العملة الأساسية
  * ثم يُوزَّع على سطورها بـ decimal.allocate (أكبر الباقي، حتمي). الاتزان بالعملة الأساسية بالضبط بلا هامش؛
  * والقيد بعملة واحدة يتزن بها أيضًا. الفرق الحقيقي لا يُسوّى آليًا: يُرفض الترحيل ويُعرض الفرق.
+ *
+ * [م4] origin = 'system': مستندات دورة الإقفال السنوي (قيد الإقفال، ترحيل الأرصدة، وعكسهما). سطورها أرصدة محسوبة تحمل
+ * مبالغها الأساسية (لا تحويل جديد، كالعكسي)، وتُرحَّل في فترة مفتوحة أو مغلقة (لا مقفلة نهائيًا)، ولا يُشترط اتزانها
+ * بعملة أجنبية واحدة (الأرصدة لا تتقابل بالعملة الأجنبية بالضرورة؛ الاتزان بالعملة الأساسية إلزامي دائمًا).
+ * guards: وحدات أخرى تسجّل شروطًا إضافية على كل ترحيل (مثل: السنة مُقفلة لهذا الفرع).
  */
 const pad2 = (n) => String(n).padStart(2, '0');
 /** تاريخ اليوم المحلي للجهاز (للتحقق من التاريخ المستقبلي فقط). */
@@ -22,6 +27,8 @@ const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${pa
 function createLedger(services, { today = localToday } = {}) {
   const { db, decimal: D, audit } = services;
   const fail = (status, code, message, details) => { throw new HttpError(status, code, message, details); };
+  const guards = [];
+  const integrityChecks = [];
 
   function baseCurrency() {
     services.currencies.ensureBase();
@@ -61,7 +68,7 @@ function createLedger(services, { today = localToday } = {}) {
    */
   function checkLine(ctx, doc, l, base, origin) {
     const where = { line: l.lineNo };
-    if (origin === 'reversal') return checkReversalLine(doc, l, base, where);
+    if (origin === 'reversal' || origin === 'system') return checkReversalLine(doc, l, base, where);
     // الحساب: تفصيلي نشط (خدمة دليل الحسابات نفسها)، ويقبل القيد اليدوي/الافتتاحي
     const acc = atLine(l.lineNo, () => services.accounts.assertPostable(l.accountId, ctx));
     if (acc.allow_manual_entry !== 1) fail(409, 'MANUAL_ENTRY_NOT_ALLOWED', 'الحساب حساب مراقبة لا يقبل قيدًا يدويًا', { ...where, account: acc.code });
@@ -101,7 +108,7 @@ function createLedger(services, { today = localToday } = {}) {
     return { ...l, currencyCode: cur.code, rateText: l.rate, rate, side: D.isZero(credit) ? 'debit' : 'credit', amount: D.isZero(credit) ? debit : credit };
   }
 
-  /** سطر عكسي: مرآة سطر مرحّل بمبالغه الأساسية المحفوظة (لا تحويل جديد). القاعدة تتحقق من المطابقة التامة (C1–C4). */
+  /** سطر عكسي أو سطر نظام: مبالغه الأساسية محفوظة (لا تحويل جديد). القاعدة تتحقق من المطابقة التامة (C1–C4). */
   function checkReversalLine(doc, l, base, where) {
     const acc = db.prepare('SELECT id, code, is_group FROM accounts WHERE id = ?').get(l.accountId);
     if (!acc) fail(409, 'NOT_USABLE', 'الحساب غير موجود', { ...where, reason: 'NOT_FOUND' });
@@ -114,7 +121,7 @@ function createLedger(services, { today = localToday } = {}) {
     const credit = stored(l.creditFc, 'amount', cur.code, { ...where, field: 'credit' });
     const bd = stored(l.debit, 'amount', base.code, { ...where, field: 'baseDebit' });
     const bc = stored(l.credit, 'amount', base.code, { ...where, field: 'baseCredit' });
-    if (D.isZero(debit) === D.isZero(credit) || D.isZero(bd) !== D.isZero(debit) || D.isZero(bc) !== D.isZero(credit)) fail(409, 'LINE_SIDE', 'سطر عكسي غير صالح', where);
+    if (D.isZero(debit) === D.isZero(credit) || D.isZero(bd) !== D.isZero(debit) || D.isZero(bc) !== D.isZero(credit)) fail(409, 'LINE_SIDE', 'سطر غير صالح: المبلغ الأصلي والأساسي في طرف واحد موجب', where);
     const side = D.isZero(credit) ? 'debit' : 'credit';
     return { ...l, currencyCode: cur.code, rateText: l.rate, rate, side, amount: side === 'debit' ? debit : credit, base: D.canonical(side === 'debit' ? bd : bc) };
   }
@@ -145,16 +152,24 @@ function createLedger(services, { today = localToday } = {}) {
     }
   }
 
+  /** مستندات النظام: الفترة التي تحوي التاريخ، مفتوحة أو مغلقة (المقفلة نهائيًا لا تتغير أبدًا). */
+  function systemPeriod(date) {
+    const p = services.fiscal.periodFor(date);
+    if (!p) fail(409, 'NO_FISCAL_PERIOD', 'التاريخ لا يقع في أي فترة مالية معرّفة', { date });
+    if (p.status === 'locked') fail(409, 'PERIOD_LOCKED', 'الفترة مقفلة نهائيًا', { date, period: p.id });
+    return p;
+  }
+
   /**
-   * doc = { sourceType, sourceId, docType, seriesId, entryKind: 'normal'|'opening', origin: 'manual'|'opening'|'reversal',
+   * doc = { sourceType, sourceId, docType, seriesId, entryKind: 'normal'|'opening'|'closing', origin: 'manual'|'opening'|'reversal'|'system',
    *         branchId, date, description, futureDateConfirmed, lines: [{ lineNo, lineId, accountId, costCenterId,
    *         currencyId, rate, rateSource, rateId, rateReason, rateSetBy, rateSetAt, debitFc, creditFc, description }],
    *         persist(result) — يكتب المستند في جداوله داخل المعاملة نفسها قبل الأستاذ }
    */
   function post(ctx, doc) {
     return inTransaction(db, () => {
-      if (doc.entryKind === 'closing') fail(409, 'ENTRY_TYPE_NOT_SUPPORTED', 'قيود الإقفال غير متاحة قبل المرحلة 4');
-      if (!['manual', 'opening', 'reversal'].includes(doc.origin)) fail(409, 'ENTRY_TYPE_NOT_SUPPORTED', 'نوع الترحيل غير مدعوم في هذه المرحلة');
+      if (!['manual', 'opening', 'reversal', 'system'].includes(doc.origin)) fail(409, 'ENTRY_TYPE_NOT_SUPPORTED', 'نوع الترحيل غير مدعوم');
+      if (doc.entryKind === 'closing' && doc.origin !== 'system') fail(409, 'ENTRY_TYPE_NOT_SUPPORTED', 'قيد الإقفال يُنشأ من دورة الإقفال السنوي فقط');
       const base = baseCurrency();
       // الفرع
       const br = db.prepare('SELECT * FROM branches WHERE id = ?').get(doc.branchId);
@@ -163,8 +178,9 @@ function createLedger(services, { today = localToday } = {}) {
       if (br.is_active !== 1) fail(409, 'BRANCH_INACTIVE', 'الفرع معطّل');
       // التاريخ والفترة والسنة
       if (doc.date > today() && !doc.futureDateConfirmed) fail(409, 'FUTURE_DATE_NOT_CONFIRMED', 'تاريخ القيد بعد اليوم؛ يلزم تأكيد صريح', { date: doc.date });
-      const period = services.fiscal.assertOpen(doc.date);
+      const period = doc.origin === 'system' ? systemPeriod(doc.date) : services.fiscal.assertOpen(doc.date);
       const year = db.prepare('SELECT * FROM fiscal_years WHERE id = ?').get(period.fiscalYearId);
+      for (const g of guards) g(ctx, doc);
       if (doc.origin === 'opening') {
         const first = db.prepare('SELECT min(start_date) d FROM fiscal_years').get().d;
         if (doc.date !== first) fail(409, 'OPENING_DATE', 'القيد الافتتاحي بتاريخ أول يوم من أول سنة مالية فقط', { required: first });
@@ -172,13 +188,13 @@ function createLedger(services, { today = localToday } = {}) {
       if (!Array.isArray(doc.lines) || doc.lines.length < 2) fail(409, 'TOO_FEW_LINES', 'القيد يحتاج سطرين على الأقل');
 
       const lines = doc.lines.map((l) => checkLine(ctx, doc, l, base, doc.origin));
-      if (doc.origin !== 'reversal') baseAmounts(lines, base);          // العكسي يحمل المبالغ الأساسية المحفوظة للأصل
+      if (doc.origin !== 'reversal' && doc.origin !== 'system') baseAmounts(lines, base);   // العكسي والنظام يحملان المبالغ الأساسية
       const dr = lines.filter((l) => l.side === 'debit');
       const cr = lines.filter((l) => l.side === 'credit');
       const bal = D.balance(dr.map((l) => l.base), cr.map((l) => l.base));
       if (!bal.balanced) fail(409, 'UNBALANCED', 'القيد غير متزن بالعملة الأساسية', { totalDebit: bal.totalDebit, totalCredit: bal.totalCredit, difference: bal.difference, currency: base.code });
       const currencies = [...new Set(lines.map((l) => l.currencyCode))];
-      if (currencies.length === 1) {
+      if (currencies.length === 1 && doc.origin !== 'system') {
         const fc = D.balance(dr.map((l) => l.amount), cr.map((l) => l.amount));
         if (!fc.balanced) fail(409, 'UNBALANCED', 'القيد غير متزن بعملته', { totalDebit: fc.totalDebit, totalCredit: fc.totalCredit, difference: fc.difference, currency: currencies[0] });
       }
@@ -236,10 +252,17 @@ function createLedger(services, { today = localToday } = {}) {
         GROUP BY c.series_id, c.branch_key, c.year_key`).all()) {
       if (r.n !== r.last_value || r.mx !== r.last_value) problems.push({ type: 'NUMBERING_GAP', ...r });
     }
+    for (const fn of integrityChecks) problems.push(...fn());
     return { ok: problems.length === 0, problems };
   }
 
-  return { post, integrity, baseCurrency, baseAmounts, today };
+  return {
+    post, integrity, baseCurrency, baseAmounts, today,
+    registerGuard: (fn) => guards.push(fn),
+    /** المسودة: نفس حراس الترحيل على الفرع والتاريخ (مثل: السنة مُقفلة لهذا الفرع) فلا تُنشأ مسودة لا يمكن ترحيلها. */
+    assertDraftable: (ctx, branchId, date) => { for (const g of guards) g(ctx, { origin: 'manual', branchId, date }); },
+    registerIntegrity: (fn) => integrityChecks.push(fn),
+  };
 }
 
 module.exports = { createLedger, localToday };

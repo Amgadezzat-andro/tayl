@@ -35,7 +35,7 @@ TAYL.views.dashboard = (() => {
           badge(it.status === 'active' ? 'dash.moduleActive' : 'dash.modulePlanned', it.status === 'active' ? 'ok' : 'muted')))));
     }) : null;
 
-    // P9: سنة مالية انتهت ولم تُقفل (لا إقفال قبل المرحلة 4) ⇒ نتائج ما بعدها غير نهائية
+    // P9: سنة مالية انتهت ولم تُقفل لكل الفروع (مركز الإقفال السنوي) ⇒ نتائج ما بعدها غير نهائية
     const yearWarnings = ledger && ledger.warnings.length ? el('div', { class: 'notice warn', role: 'status' },
       ledger.warnings.map((w) => el('p', { text: t('ledger.yearEndedNotClosed', { year: w.year.code, end: w.year.endDate }) }))) : null;
 

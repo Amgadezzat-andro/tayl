@@ -4,17 +4,25 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startReady, makeUser } = require('./helpers');
 const { ok, seedLedger, draft, postEntry, postNew } = require('./ledger-helpers');
+const { seedYears, setRetained, post: yePost, closePeriods, closeYear } = require('./year-end-helpers');
 
 const L = (seed, a = '10', extra = {}) => [{ accountId: seed.acc.cash.id, debit: a, ...extra }, { accountId: seed.acc.sales.id, credit: a }];
 const periodsOf = async (s) => ok(await s.admin.get('/api/fiscal-years/' + ok(await s.admin.get('/api/fiscal-years'))[0].id)).periods;
 
 test('مراجعة 1: نطاق يمتد خارج السنوات المعرّفة لا يكون «نهائيًا» ولو كانت كل فتراته المعرّفة مقفلة', async (t) => {
+  // م4 (P10): آخر فترة لا تُقفل نهائيًا قبل إقفال السنة لكل فرع له حركات ⇒ سنة منتهية (2025) تُقفل أولًا ثم تُقفل فتراتها
   const s = await startReady(); t.after(s.stop);
-  const seed = await seedLedger(s);
-  await postNew(s, seed, L(seed, '100'));
-  for (const p of await periodsOf(s)) { ok(await s.admin.post(`/api/fiscal-periods/${p.id}/close`, { reason: 'إغلاق' })); ok(await s.admin.post(`/api/fiscal-periods/${p.id}/lock`, { reason: 'قفل' })); }
-  assert.deepEqual(ok(await s.admin.get('/api/ledger/trial-balance?from=2026-01-01&to=2026-12-31')).finality, { final: true, reasons: [] });
-  const f = ok(await s.admin.get('/api/ledger/trial-balance?from=2026-01-01&to=2027-12-31')).finality;
+  const seed = await seedYears(s, { years: [2025] });
+  await setRetained(s, seed);
+  await yePost(s, seed, '2025-03-15', [{ accountId: seed.acc.cash.id, debit: '100' }, { accountId: seed.acc.sales.id, credit: '100' }]);
+  const ps = await closePeriods(s, seed.fy[2025].id);
+  for (const p of ps.slice(0, 11)) ok(await s.admin.post(`/api/fiscal-periods/${p.id}/lock`, { reason: 'قفل' }));
+  assert.equal((await s.admin.post(`/api/fiscal-periods/${ps[11].id}/lock`, { reason: 'قفل' })).body.error.code, 'YEAR_NOT_CLOSED_FOR_LOCK');
+  assert.throws(() => s.app.db.prepare("UPDATE fiscal_periods SET status = 'locked' WHERE id = ?").run(ps[11].id), /locked only after every branch has closed the year/);
+  ok(await closeYear(s, seed.fy[2025].id));
+  ok(await s.admin.post(`/api/fiscal-periods/${ps[11].id}/lock`, { reason: 'قفل' }));
+  assert.deepEqual(ok(await s.admin.get('/api/ledger/trial-balance?from=2025-01-01&to=2025-12-31')).finality, { final: true, reasons: [] });
+  const f = ok(await s.admin.get('/api/ledger/trial-balance?from=2025-01-01&to=2026-12-31')).finality;
   assert.equal(f.final, false); assert.ok(f.reasons.some((r) => r.code === 'RANGE_NOT_COVERED'));
 });
 

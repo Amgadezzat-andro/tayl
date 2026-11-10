@@ -140,7 +140,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await go('documentSeries'); await sleep(500);
   ui = await visibleUi();
   check('numbering series listed with example', ui.includes('JV-HQ-FY'));
-  const editBtn = await page.evaluateHandle(() => [...document.querySelectorAll('#page button')].find((b) => b.textContent === 'تعديل'));
+  // [م4] سلاسل الإقفال الجديدة تظهر في القائمة أيضًا: زر تعديل صف JV المستخدم تحديدًا
+  const editBtn = await page.evaluateHandle(() => [...document.querySelectorAll('#page tr')].find((r) => /^JV\b/.test(r.innerText.trim()) || r.innerText.includes('JV-HQ-FY')).querySelector('button'));
   await editBtn.click(); await page.waitForSelector('dialog[open]');
   check('used series: locked fields disabled with notice', await page.$eval('dialog input[name="prefix"]', (i) => i.disabled) && (await visibleUi()).includes('مقفلة'));
   await page.keyboard.press('Escape');

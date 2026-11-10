@@ -6,6 +6,7 @@ module.exports = [
   { id: 'fiscal-years',   group: 'foundation', ar: 'السنوات المالية', en: 'Fiscal Years' },
   { id: 'chart-accounts', group: 'finance', ar: 'دليل الحسابات', en: 'Chart of Accounts' },
   { id: 'journal',        group: 'finance', ar: 'القيود اليومية والحسابات العامة', en: 'Journal & General Ledger' },
+  { id: 'year-end',       group: 'finance', ar: 'الإقفال السنوي وترحيل الأرصدة', en: 'Year-End Closing & Carry-Forward' },
   { id: 'treasury',       group: 'finance', ar: 'الخزائن والبنوك', en: 'Cash & Banks' },
   { id: 'currencies',     group: 'finance', ar: 'العملات وأسعار الصرف', en: 'Currencies & Exchange Rates' },
   { id: 'payment-terms',  group: 'finance', ar: 'شروط وطرق السداد', en: 'Payment Terms & Methods' },

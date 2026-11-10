@@ -420,7 +420,7 @@ TAYL.views = TAYL.views || {};
       const list = await api.get('/api/document-series');
       const can = (a) => app.can('document_series.' + a);
       const reload = () => app.rerender();
-      const DOC_TYPES = ['journal', 'journal_opening', 'journal_reversal'];
+      const DOC_TYPES = ['journal', 'journal_opening', 'journal_reversal', 'year_closing', 'year_closing_reversal', 'carry_forward', 'carry_forward_reversal'];   // [م4] سلاسل الإقفال
       function edit(s) {
         const locked = s && s.isUsed;
         const f = form({

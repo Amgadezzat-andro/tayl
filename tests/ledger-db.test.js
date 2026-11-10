@@ -124,7 +124,7 @@ test('ledger-db: العملة الأساسية لا تتغير بعد الترح
   rejects(() => db.prepare("UPDATE company SET base_currency = 'USD'").run(), /base currency is locked/);
   assert.equal((await s.admin.put('/api/company', { baseCurrency: 'SAR' })).body.error.code, 'BASE_CURRENCY_LOCKED');
   rejects(() => db.prepare(`INSERT INTO journal_entries (branch_id, entry_type, entry_date, series_id, default_currency_id, description, created_by, updated_by)
-    VALUES (1, 'closing', '2026-12-31', 1, ?, 'x', 1, 1)`).run(seed.egp.id), /closing entries are not available before phase 4/);
+    VALUES (1, 'closing', '2026-12-31', 1, ?, 'x', 1, 1)`).run(seed.egp.id), /closing entries are created by the year-end closing only/);   // م4: الرسالة استُبدلت؛ القيد اليومي لا يكون إقفالًا أبدًا
   rejects(() => db.prepare(`INSERT INTO journal_entries (branch_id, entry_type, status, entry_date, series_id, default_currency_id, description, created_by, updated_by)
     VALUES (1, 'general', 'posted', '2026-03-15', 1, ?, 'x', 1, 1)`).run(seed.egp.id), /created as drafts/);
 });

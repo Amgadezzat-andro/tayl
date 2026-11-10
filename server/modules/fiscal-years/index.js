@@ -17,6 +17,8 @@ const { writeSheet, sendXlsx } = require('../../core/xlsx');
  *    P3 تحذير عند إغلاق فترة وقبلها فترة مفتوحة، P4 إعادة فتح فترة بها قيود مرحّلة تتطلب تأكيدًا صريحًا،
  *    P5 السنوات متصلة بلا فجوات (والحذف للسنة الأولى أو الأخيرة فقط)، P6 عبر yearGuards تسجّلها وحدة القيود.
  *    finality(from, to) لنهائية التقارير، endedYears(today) لتحذير P9.
+ *  - [م4] وحدة الإقفال السنوي تسجّل: yearClosed(yearRow) (السنة مُقفلة لكل الفروع المطلوبة) فتُستبعد من
+ *    PRIOR_YEAR_NOT_CLOSED ومن تحذير P9، وحراس تغيير حالة الفترة (P10: آخر فترة لا تُقفل نهائيًا قبل إقفال السنة).
  */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const CODE_RE = /^[A-Z0-9][A-Z0-9._-]{0,29}$/;
@@ -90,6 +92,8 @@ module.exports = {
     // [م3] وحدات أخرى تسجّل: نشاط الفترة (عدد المستندات المرحّلة فيها) وحراس إنشاء السنة (P6)
     const periodActivity = new Map();
     const yearGuards = [];
+    const periodGuards = [];
+    let yearClosed = () => false;
     const postedIn = (periodId) => [...periodActivity.values()].reduce((n, fn) => n + fn(db, periodId), 0);
 
     function createYear(ctx, body) {
@@ -191,6 +195,7 @@ module.exports = {
           const open = earlier("status = 'open'");
           if (open.length) warnings.push({ code: 'EARLIER_PERIODS_OPEN', periods: open });
         }
+        for (const g of periodGuards) g(op, p);                 // P10 وأمثاله
         let postedEntries = 0;
         if (op === 'reopen') {                                   // P4
           postedEntries = postedIn(p.id);
@@ -220,8 +225,8 @@ module.exports = {
       return p;
     }
     /**
-     * نهائية تقرير يغطي [from, to] (المقترح 7.3): نهائي فقط إن كانت كل فتراته مقفلة نهائيًا ولا سنة مالية قبله
-     * (الإقفال السنوي غير متاح قبل المرحلة 4، فأي نطاق بعد أول سنة غير نهائي).
+     * نهائية تقرير يغطي [from, to] (المقترح 7.3): نهائي فقط إن كانت كل فتراته مقفلة نهائيًا وكل سنة مالية قبله
+     * مُقفلة لكل الفروع المطلوبة ([م4]).
      */
     function finality(from, to) {
       const reasons = [];
@@ -232,17 +237,21 @@ module.exports = {
       // أيام من النطاق لا تغطيها فترة معرّفة (السنوات متصلة بـ P5، فيكفي فحص الطرفين) — قد تُضاف سنة ويُرحَّل فيها لاحقًا
       const cover = db.prepare('SELECT min(start_date) s, max(end_date) e FROM fiscal_periods').get();
       if (ps.length && (!cover.s || cover.s > from || cover.e < to)) reasons.push({ code: 'RANGE_NOT_COVERED' });
-      const prior = db.prepare('SELECT code, end_date endDate FROM fiscal_years WHERE start_date < ? ORDER BY start_date').all(ps.length ? ps.reduce((m, p) => (p.ys < m ? p.ys : m), ps[0].ys) : from);
+      const prior = db.prepare('SELECT * FROM fiscal_years WHERE start_date < ? ORDER BY start_date').all(ps.length ? ps.reduce((m, p) => (p.ys < m ? p.ys : m), ps[0].ys) : from)
+        .filter((y) => !yearClosed(y));
       if (prior.length) reasons.push({ code: 'PRIOR_YEAR_NOT_CLOSED', years: prior.map((y) => y.code) });
       return { final: reasons.length === 0, reasons };
     }
-    /** P9: السنوات التي انتهى تاريخها ولم تُقفل (لا إقفال قبل المرحلة 4 ⇒ كل سنة منتهية). */
-    const endedYears = (today) => db.prepare('SELECT id, code, name_ar nameAr, name_en nameEn, start_date startDate, end_date endDate FROM fiscal_years WHERE end_date < ? ORDER BY start_date').all(today);
+    /** P9: السنوات التي انتهى تاريخها ولم تُقفل لكل الفروع المطلوبة. */
+    const endedYears = (today) => db.prepare('SELECT * FROM fiscal_years WHERE end_date < ? ORDER BY start_date').all(today)
+      .filter((y) => !yearClosed(y)).map((y) => ({ id: y.id, code: y.code, nameAr: y.name_ar, nameEn: y.name_en, startDate: y.start_date, endDate: y.end_date }));
 
     services.fiscal = {
       periodFor, assertOpen, generatePeriods, finality, endedYears,
       registerPeriodActivity: (name, fn) => periodActivity.set(name, fn),
       registerYearGuard: (fn) => yearGuards.push(fn),
+      registerPeriodGuard: (fn) => periodGuards.push(fn),
+      registerYearClosed: (fn) => { yearClosed = fn; },
     };
 
     function exportData(lang) {

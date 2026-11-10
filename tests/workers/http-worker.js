@@ -3,6 +3,7 @@
  * عامل تزامن عام: نسخة برنامج كاملة مستقلة (عملية منفصلة) على نفس ملف القاعدة، تنفذ قائمة طلبات HTTP بجلسة معطاة.
  * mode = 'lock': يقفل الفترات المعطاة بالترتيب، ويعيد المحاولة على PERIOD_LOCK_SEQUENCE حتى تُقفل سابقتها (بحد أقصى).
  * mode = 'reverse': يعكس القيد المعطى مرة واحدة.
+ * mode = 'request': [م4] طلب POST واحد: payload = JSON { path, body } (الإقفال/الترحيل المتزامن).
  * سياسة SQLITE_BUSY (503 DB_BUSY) كما في retry.js.
  */
 const path = require('node:path');
@@ -38,6 +39,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   } else if (mode === 'reverse') {
     const r = await withRetry(() => call('POST', `/api/journal/${payload}/reverse`, { reason: 'عكس متزامن' }), out, busy);
     out.results.push({ status: r.status, code: r.body.error ? r.body.error.code : null, number: r.body.number || null });
+  } else if (mode === 'request') {
+    const { path: p, body } = JSON.parse(payload);
+    const r = await withRetry(() => call('POST', p, body), out, busy);
+    out.results.push({ status: r.status, code: r.body.error ? r.body.error.code : null, body: r.body });
   }
   await app.close();
   process.send(out, () => process.exit(0));

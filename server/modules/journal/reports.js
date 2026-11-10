@@ -9,7 +9,13 @@ const { writeSheet, sendXlsx } = require('../../core/xlsx');
  *  - كل جمع ورصيد بالمحرك العشري (dec_sum في SQL، services.decimal في JS) — لا Number ولا SUM.
  *  - نطاق الفروع: ctx.access.sqlFilter («كل الفروع» = المصرح بها فقط).
  *  - كل تقرير يرد finality (المقترح 7.3)، والطباعة والتصدير تحمل ختم «غير نهائي» بأسبابه.
+ *  - [م4] الأرصدة (كشف الحساب وميزان المراجعة) تُحسب تراكميًا من كل الأستاذ **عدا قيود ترحيل الأرصدة**
+ *    (source_type = carry_forward): هي سجل موثق لرصيد افتتاح السنة يساوي رصيد نهاية السابقة بالضبط (تثبته المطابقة)،
+ *    فإدخالها في الجمع التراكمي يكرر الرصيد. بذلك لا تتغير أي نتيجة بوجود الترحيل أو غيابه، ولا ازدواج ولا فقد.
+ *    دفتر اليومية يعرضها كمستندات. قيد الإقفال (entry_kind = closing) حركة عادية في الأرصدة؛ ميزان المراجعة قبل
+ *    الإقفال بـ excludeClosing=1.
  */
+const NOT_CF = "g.source_type <> 'carry_forward'";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const validDate = (s) => typeof s === 'string' && DATE_RE.test(s) && new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) === s;
 const MAX_STATEMENT_ROWS = 20000;
@@ -67,7 +73,7 @@ function registerReports(router, services) {
     const w = [s.sql, 'g.posting_date BETWEEN ? AND ?']; const p = [...s.params, from, to];
     if (q.number) { w.push("g.doc_number LIKE ? ESCAPE '\\'"); p.push('%' + String(q.number).slice(0, 60).replace(/[\\%_]/g, (m) => '\\' + m) + '%'); }
     if (q.accountId) { w.push('EXISTS (SELECT 1 FROM gl_entries x WHERE x.source_type = g.source_type AND x.source_id = g.source_id AND x.account_id = ?)'); p.push(Number.parseInt(q.accountId, 10)); }
-    if (['opening', 'normal'].includes(q.kind)) { w.push('g.entry_kind = ?'); p.push(q.kind); }
+    if (['opening', 'normal', 'closing'].includes(q.kind)) { w.push('g.entry_kind = ?'); p.push(q.kind); }
     const where = w.join(' AND ');
     const limit = intQ(q.limit, 50, 500); const offset = intQ(q.offset, 0, 1e7);
     const docs = db.prepare(`SELECT g.source_type, g.source_id, g.doc_number, g.posting_date, g.branch_id, min(g.id) first_id, dec_sum(g.debit) d, dec_sum(g.credit) c
@@ -81,8 +87,14 @@ function registerReports(router, services) {
     const meta = db.prepare(`SELECT e.description, e.reference, e.entry_type, e.reason, o.id rev_id, o.number rev_number, r.id by_id, r.number by_number, b.code branch_code
       FROM journal_entries e JOIN branches b ON b.id = e.branch_id LEFT JOIN journal_entries o ON o.id = e.reverses_id
       LEFT JOIN journal_entries r ON r.reverses_id = e.id AND r.status = 'posted' WHERE e.id = ?`);
+    const yeMeta = db.prepare(`SELECT e.description, e.kind, e.is_reversal, e.reason, o.number rev_number, o.id rev_id, b.code branch_code
+      FROM year_end_entries e JOIN branches b ON b.id = e.branch_id LEFT JOIN year_end_entries o ON o.id = e.reverses_id WHERE e.id = ?`);
+    const ye = (id) => {
+      const m = yeMeta.get(id) || {};
+      return { description: m.description, branch_code: m.branch_code, reason: m.reason, entry_type: m.is_reversal ? m.kind + '_reversal' : m.kind, rev_id: m.rev_id, rev_number: m.rev_number };
+    };
     const items = docs.slice(0, limit).map((d) => {
-      const m = d.source_type === 'journal' ? meta.get(d.source_id) : {};
+      const m = d.source_type === 'journal' ? meta.get(d.source_id) : ye(d.source_id);
       return {
         sourceType: d.source_type, sourceId: d.source_id, number: d.doc_number, date: d.posting_date, branchCode: m.branch_code,
         entryType: m.entry_type, description: m.description, reference: m.reference, reason: m.reason,
@@ -112,7 +124,7 @@ function registerReports(router, services) {
     // الحساب التجميعي = كل الحسابات التفصيلية تحته
     const ids = acc.is_group ? db.prepare("SELECT id FROM accounts WHERE path LIKE ? AND is_group = 0").all(acc.path + '%').map((r) => r.id) : [acc.id];
     const s = scope(ctx, q);
-    const w = [s.sql, `g.account_id IN (${ids.length ? ids.map(() => '?').join(',') : 'NULL'})`]; const p = [...s.params, ...ids];
+    const w = [s.sql, NOT_CF, `g.account_id IN (${ids.length ? ids.map(() => '?').join(',') : 'NULL'})`]; const p = [...s.params, ...ids];
     let cur = null;
     if (q.currencyId) {
       cur = db.prepare('SELECT id, code FROM currencies WHERE id = ?').get(Number.parseInt(q.currencyId, 10));
@@ -161,7 +173,7 @@ function registerReports(router, services) {
     const agg = db.prepare(`SELECT g.account_id id,
         dec_sum(CASE WHEN g.posting_date < ? THEN g.debit ELSE '0' END) od, dec_sum(CASE WHEN g.posting_date < ? THEN g.credit ELSE '0' END) oc,
         dec_sum(CASE WHEN g.posting_date >= ? THEN g.debit ELSE '0' END) md, dec_sum(CASE WHEN g.posting_date >= ? THEN g.credit ELSE '0' END) mc
-      FROM gl_entries g WHERE ${s.sql} AND g.posting_date <= ? GROUP BY g.account_id`).all(from, from, from, from, ...s.params, to);
+      FROM gl_entries g WHERE ${s.sql} AND ${NOT_CF}${q.excludeClosing === '1' ? " AND g.entry_kind <> 'closing'" : ''} AND g.posting_date <= ? GROUP BY g.account_id`).all(from, from, from, from, ...s.params, to);
     const accounts = db.prepare('SELECT id, path, level, is_group, parent_id FROM accounts').all();
     const byId = new Map(accounts.map((a) => [a.id, a]));
     const Z = () => ({ open: D.parse('0'), md: D.parse('0'), mc: D.parse('0') });
@@ -201,7 +213,7 @@ function registerReports(router, services) {
       balanced: { opening: D.eq(tot.od, tot.oc), movement: D.eq(tot.md, tot.mc), closing: D.eq(tot.cd, tot.cc) },
     };
     totals.balanced.all = totals.balanced.opening && totals.balanced.movement && totals.balanced.closing;
-    return { from, to, baseCurrency: base(), branch: branchLabel(ctx, q), level: maxLevel, rows, totals, finality: services.fiscal.finality(from, to) };
+    return { from, to, baseCurrency: base(), branch: branchLabel(ctx, q), level: maxLevel, excludeClosing: q.excludeClosing === '1', rows, totals, finality: services.fiscal.finality(from, to) };
   }
 
   // ── الطباعة والتصدير (نفس البيانات، مع ختم النهائية) ──

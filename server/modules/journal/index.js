@@ -192,6 +192,7 @@ module.exports = {
       return inTransaction(db, () => {
         if (!db.prepare('SELECT 1 FROM branches WHERE id = ?').get(branchId)) throw vErr({ branchId: 'NOT_FOUND' });
         if (entryType === 'opening' && v.entryDate !== firstYearStart()) throw new HttpError(409, 'OPENING_DATE', 'القيد الافتتاحي بتاريخ أول يوم من أول سنة مالية فقط', { required: firstYearStart() });
+        ledger.assertDraftable(ctx, branchId, v.entryDate);
         const base = ledger.baseCurrency();
         const defaultCur = v.defaultCurrencyId ? services.currencies.byId(v.defaultCurrencyId) : base;
         if (!defaultCur) throw vErr({ defaultCurrencyId: 'NOT_FOUND' });
@@ -222,6 +223,7 @@ module.exports = {
         const branchId = v.branchId || e.branch_id;
         ctx.access.assertBranch(branchId);
         if (!db.prepare('SELECT 1 FROM branches WHERE id = ?').get(branchId)) throw vErr({ branchId: 'NOT_FOUND' });
+        ledger.assertDraftable(ctx, branchId, v.entryDate);
         const base = ledger.baseCurrency();
         const defaultCur = v.defaultCurrencyId ? services.currencies.byId(v.defaultCurrencyId) : services.currencies.byId(e.default_currency_id);
         if (!defaultCur) throw vErr({ defaultCurrencyId: 'NOT_FOUND' });

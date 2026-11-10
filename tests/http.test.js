@@ -27,12 +27,12 @@ test('http: health و info و modules', async (t) => {
   assert.equal(info.name, 'TAYL');
   assert.equal(info.support, '01123401333');
   assert.equal(info.tagline, 'STRATEGIC ACCOUNTING | FINANCE | COST SOLUTIONS');
-  assert.equal(info.migrations.length, 17);   // م1: 3 + م2: 7 + 0.3.1: 1 + م3: 6
+  assert.equal(info.migrations.length, 18);   // م1: 3 + م2: 7 + 0.3.1: 1 + م3: 6 + م4: 1
   const mods = await (await fetch(s.base + '/api/system/modules')).json();
-  assert.equal(mods.roadmap.length, 25);       // م2 أضافت: العملات، شروط السداد، وحدات القياس
+  assert.equal(mods.roadmap.length, 26);       // م2 أضافت: العملات، شروط السداد، وحدات القياس؛ م4: الإقفال السنوي
   assert.deepEqual(mods.roadmap.filter((r) => r.status === 'active').map((r) => r.id).sort(),
-    ['chart-accounts', 'company-setup', 'cost-centers', 'currencies', 'fiscal-years', 'journal', 'payment-terms', 'security', 'treasury', 'units']);   // م3: journal
-  assert.deepEqual(mods.loaded.map((m) => m.name), ['system', 'company-setup', 'security', 'fiscal-years', 'chart-accounts', 'cost-centers', 'currencies', 'treasury', 'payment-terms', 'units', 'numbering', 'journal']);
+    ['chart-accounts', 'company-setup', 'cost-centers', 'currencies', 'fiscal-years', 'journal', 'payment-terms', 'security', 'treasury', 'units', 'year-end']);   // م3: journal، م4: year-end
+  assert.deepEqual(mods.loaded.map((m) => m.name), ['system', 'company-setup', 'security', 'fiscal-years', 'chart-accounts', 'cost-centers', 'currencies', 'treasury', 'payment-terms', 'units', 'numbering', 'journal', 'year-end']);
 });
 
 test('http: ترويسات الأمان موجودة', async (t) => {

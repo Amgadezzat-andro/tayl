@@ -37,6 +37,8 @@ const MODULES = [
   // المرحلة 3: ترقيم المستندات، القيود اليومية والأستاذ العام ومحرك الترحيل
   require('./modules/numbering'),
   require('./modules/journal'),
+  // المرحلة 4: الإقفال السنوي وترحيل الأرصدة للسنة التالية
+  require('./modules/year-end'),
 ];
 
 async function createApp({ config, logger, modules = MODULES }) {

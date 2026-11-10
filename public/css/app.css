@@ -286,3 +286,11 @@ table.compact td, table.compact th { padding: 4px 8px; }
   .report-filters .cb-inline { max-width: none; }
 }
 @media print { .je-totals { background: none; } .jr-doc { break-inside: avoid; } }
+
+/* [م4] مركز الإقفال السنوي: الأخطاء المانعة منفصلة عن التحذيرات والمعلومات */
+.ye-issues { border-radius: 8px; padding: 8px 12px; margin: 8px 0; border: 1px solid transparent; }
+.ye-issues ul { margin: 4px 0 0; padding-inline-start: 20px; }
+.ye-issues.bad { background: var(--err-soft); color: var(--err); border-color: #efb8b8; }
+.ye-issues.warn { background: var(--warn-soft); color: var(--warn); border-color: #e8cf94; }
+.ye-issues.info { background: #eef3fb; color: var(--navy); border-color: #c9d7ee; }
+.ye-overall, .ye-year { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }

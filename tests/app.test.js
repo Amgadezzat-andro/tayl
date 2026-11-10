@@ -21,7 +21,9 @@ test('app: أول تشغيل ينشئ القاعدة والجداول بلا ن�
     'currencies/0002_exchange_rate_corrections',   // 0.3.1
     'treasury/0001_treasuries', 'payment-terms/0001_payment_terms_methods', 'units/0001_units',
     // المرحلة 3
-    'numbering/0001_numbering', 'journal/0001_journal_ledger', 'journal/0002_opening_and_controls']);
+    'numbering/0001_numbering', 'journal/0001_journal_ledger', 'journal/0002_opening_and_controls',
+    // المرحلة 4
+    'year-end/0001_year_end']);
   assert.equal(app.preMigrationBackup, null);
   assert.equal(app.db.prepare("SELECT value FROM app_meta WHERE key='app_id'").get().value, 'TAYL');
   await app.close();

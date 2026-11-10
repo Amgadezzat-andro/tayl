@@ -20,6 +20,8 @@ TAYL.views = TAYL.views || {};
       el('ul', null, f.reasons.map((r) => el('li', { text: t('ledger.reason.' + r.code) + (r.years ? ` (${r.years.join(t('common.listSep'))})` : '') }))));
   }
 
+  TAYL.ledgerFinality = finalityBar;   // [م4] تقارير الإقفال تعرض الشريط نفسه
+
   /** مرشحات مشتركة: السنة المالية أو من/إلى، والفرع، (ومركز التكلفة اختياريًا). */
   async function filterBar(app, state, { costCenter = false, extra = [] } = {}) {
     const years = await api.get('/api/fiscal-years').catch(() => []);
