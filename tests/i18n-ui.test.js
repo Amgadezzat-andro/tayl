@@ -64,6 +64,7 @@ test('i18n-ui: لكل عملية تدقيق، وصلاحية، ونوع قيمة
     for (const o of ['created', 'updated', 'activated', 'deactivated', 'deleted']) both(`audit.action.${e}.${o}`);
   }
   for (const r of ['accounts', 'cost_centers', 'treasury', 'currencies', 'payment_terms', 'payment_methods', 'units', 'fiscal_years']) both(`audit.action.${r}.exported`);
+  both('audit.action.exchange_rate.corrected'); both('audit.action.exchange_rate.voided');   // [0.3.1] اسم الحدث يُختار بشرط
   const cur = /TAYL\.CURRENCIES = \[([^\]]+)\]/.exec(fs.readFileSync(path.join(ROOT, 'public/js/views/auth.js'), 'utf8'))[1].match(/[A-Z]{3}/g);
   for (const c of cur) both('currency.' + c);
 });

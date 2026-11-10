@@ -27,7 +27,7 @@ test('http: health و info و modules', async (t) => {
   assert.equal(info.name, 'TAYL');
   assert.equal(info.support, '01123401333');
   assert.equal(info.tagline, 'STRATEGIC ACCOUNTING | FINANCE | COST SOLUTIONS');
-  assert.equal(info.migrations.length, 10);   // م1: 3 + م2: 7
+  assert.equal(info.migrations.length, 11);   // م1: 3 + م2: 7 + 0.3.1: 1
   const mods = await (await fetch(s.base + '/api/system/modules')).json();
   assert.equal(mods.roadmap.length, 25);       // م2 أضافت: العملات، شروط السداد، وحدات القياس
   assert.deepEqual(mods.roadmap.filter((r) => r.status === 'active').map((r) => r.id).sort(),

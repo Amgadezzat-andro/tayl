@@ -73,9 +73,9 @@ test('currencies: وجود أسعار صرف يقفل تغيير العملة ا
   const lock = await s.admin.put('/api/company', { baseCurrency: 'SAR' });
   assert.equal(lock.body.error.code, 'BASE_CURRENCY_LOCKED'); assert.deepEqual(lock.body.error.details.sources, ['exchange-rates']);
   assert.equal((await s.admin.del('/api/currencies/' + usd.id)).body.error.code, 'IN_USE');
-  assert.equal((await fx.client.del('/api/currencies/rates/' + r.id)).status, 200);                  // سعر غير مستخدم يُحذف ويُدقَّق
-  assert.ok(s.app.db.prepare("SELECT 1 FROM audit_log WHERE action = 'exchange_rate.deleted'").get());
-  assert.equal((await s.admin.put('/api/company', { baseCurrency: 'SAR' })).status, 200);
+  // [0.3.1] لا حذف للأسعار؛ حتى الإلغاء يُبقي السطر، فيبقى قفل العملة الأساسية قائمًا (القراران 1 و2)
+  assert.equal((await fx.client.post(`/api/currencies/rates/${r.id}/void`, { reason: 'إدخال خاطئ' })).status, 200);
+  assert.equal((await s.admin.put('/api/company', { baseCurrency: 'SAR' })).body.error.code, 'BASE_CURRENCY_LOCKED');
 });
 
 // ── السنوات والفترات المالية ──

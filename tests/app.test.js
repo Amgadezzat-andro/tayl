@@ -18,6 +18,7 @@ test('app: أول تشغيل ينشئ القاعدة والجداول بلا ن�
   assert.deepEqual(app.migrationsApplied, ['system/0001_core', 'company-setup/0001_company_branches', 'security/0001_users_roles_sessions',
     // المرحلة 2
     'fiscal-years/0001_fiscal_years', 'chart-accounts/0001_chart_of_accounts', 'cost-centers/0001_cost_centers', 'currencies/0001_currencies_rates',
+    'currencies/0002_exchange_rate_corrections',   // 0.3.1
     'treasury/0001_treasuries', 'payment-terms/0001_payment_terms_methods', 'units/0001_units']);
   assert.equal(app.preMigrationBackup, null);
   assert.equal(app.db.prepare("SELECT value FROM app_meta WHERE key='app_id'").get().value, 'TAYL');

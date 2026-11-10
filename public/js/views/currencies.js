@@ -3,12 +3,47 @@
 window.TAYL = window.TAYL || {};
 TAYL.views = TAYL.views || {};
 TAYL.views.currencies = (() => {
-  const { el, t, badge, name, modal, form, toast, button, errorText, fill, confirm, dateTime } = TAYL.ui;
+  const { el, t, badge, name, modal, form, toast, button, fill, dateTime } = TAYL.ui;
   let iso = null;
+
+  // تصحيح سعر أو إلغاؤه: سطر جديد بسبب إلزامي، والسطر السابق يبقى في السجل (لا حذف)
+  function reviseDialog(cur, r, op, reload) {
+    const fields = op === 'correct'
+      ? [{ name: 'rate', label: 'currency.newRate', required: true, dir: 'ltr', inputmode: 'decimal', hint: 'currency.rateHint', maxlength: 40 },
+        { name: 'reason', label: 'currency.reason', type: 'textarea', required: true, full: true, hint: 'currency.reasonHint' }]
+      : [{ name: 'reason', label: 'currency.reason', type: 'textarea', required: true, full: true, hint: 'currency.voidHint' }];
+    const f = form({
+      submitKey: 'currency.op.' + op, fields,
+      async onSubmit(v) {
+        await TAYL.api.post(`/api/currencies/rates/${r.id}/${op}`, op === 'correct' ? { rate: v.rate.trim(), reason: v.reason } : { reason: v.reason });
+        toast(t('common.saved')); reload();
+      },
+    });
+    modal({ title: `${t('currency.op.' + op)} — ${cur.code} ${r.effectiveDate} (${t('currency.rate.' + r.rateType)})`,
+      body: el('div', null, r.rate ? el('p', { class: 'muted', text: t('currency.currentRate', { rate: r.rate }) }) : null, f.node) });
+  }
+
+  async function historyDialog(cur, r, back) {
+    const rows = await TAYL.api.get(`/api/currencies/rates/${r.id}/history`);
+    modal({ title: `${t('currency.history')} — ${cur.code} ${r.effectiveDate} (${t('currency.rate.' + r.rateType)})`, wide: true,
+      body: el('div', null, TAYL.grid.create({
+        rows, emptyKey: 'currency.noRates',
+        columns: [
+          { label: 'common.created', render: (x) => dateTime(x.createdAt) },
+          { label: 'currency.entryKind', render: (x) => t('currency.kind.' + x.kind) },
+          { label: 'currency.rate', render: (x) => el('span', { dir: 'ltr', class: 'num', text: x.rate || '—' }) },
+          { label: 'currency.reason', render: (x) => x.reason || '' },
+          { label: 'common.status', render: (x) => statusBadge(x) },
+        ],
+      }).node, el('p', null, button('currency.backToRates', back, 'btn'))) });
+  }
+
+  const statusBadge = (r) => badge('currency.status.' + r.status, { current: 'ok', void: 'bad', superseded: 'muted' }[r.status]);
 
   async function ratesDialog(cur, app) {
     const can = app.can('currencies.manage_rates');
     const list = el('div');
+    const reopen = () => ratesDialog(cur, app);
     async function load() {
       const rows = await TAYL.api.get(`/api/currencies/${cur.id}/rates`);
       fill(list, TAYL.grid.create({
@@ -16,13 +51,15 @@ TAYL.views.currencies = (() => {
         columns: [
           { label: 'currency.effectiveDate', render: (r) => el('span', { dir: 'ltr', text: r.effectiveDate }), sortValue: (r) => r.effectiveDate },
           { label: 'currency.rateType', render: (r) => t('currency.rate.' + r.rateType) },
-          { label: 'currency.rate', render: (r) => el('span', { dir: 'ltr', class: 'num', text: r.rate }) },
-          { label: 'currency.note', render: (r) => r.note || '' },
+          { label: 'currency.rate', render: (r) => el('span', { dir: 'ltr', class: 'num', text: r.rate || '—' }) },
+          { label: 'common.status', render: (r) => [statusBadge(r), r.hasHistory ? ' ' : null, r.hasHistory ? badge('currency.corrected', 'gold') : null] },
+          { label: 'currency.note', render: (r) => r.reason || r.note || '' },
           { label: 'common.created', render: (r) => dateTime(r.createdAt) },
-          { label: 'common.actions', cls: 'actions', sortable: false, render: (r) => (can ? button('common.delete', async () => {
-            if (!(await confirm(t('currency.confirmDeleteRate', { date: r.effectiveDate }), { danger: true, okKey: 'common.delete' }))) return;
-            try { await TAYL.api.del('/api/currencies/rates/' + r.id); toast(t('common.deleted')); load(); } catch (e) { toast(errorText(e), 'bad'); }
-          }, 'btn small danger') : null) },
+          { label: 'common.actions', cls: 'actions', sortable: false, render: (r) => [
+            can ? button('currency.op.correct', () => reviseDialog(cur, r, 'correct', reopen), 'btn small') : null,
+            can && r.status === 'current' ? button('currency.op.void', () => reviseDialog(cur, r, 'void', reopen), 'btn small danger') : null,
+            r.hasHistory ? button('currency.history', () => historyDialog(cur, r, reopen), 'btn small') : null,
+          ].filter(Boolean) },
         ],
       }).node);
     }

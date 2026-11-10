@@ -172,6 +172,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.type('dialog input[name="rate"]', '48.123456789012');
   await page.click('dialog button[type="submit"]'); await sleep(800);
   check('exchange rate stored with full precision', (await page.$$eval('dialog .num', (n) => n.map((x) => x.textContent))).includes('48.123456789012'));
+  // [0.3.1] لا زر حذف؛ التصحيح بسبب إلزامي يضيف سطرًا ويبقى السابق في السجل
+  const dlgButtons = () => page.$$eval('dialog[open] button', (b) => b.map((x) => x.textContent));
+  check('no delete button for rates', !(await dlgButtons()).includes('حذف') && (await dlgButtons()).includes('إلغاء السعر'));
+  const clickDlg = async (txt) => { const b = await page.evaluateHandle((x) => [...document.querySelectorAll('dialog[open] button')].find((e) => e.textContent === x), txt); await b.click(); };
+  await clickDlg('تصحيح'); await page.waitForSelector('dialog[open] textarea[name="reason"]');
+  await page.type('dialog input[name="rate"]', '48.5');
+  await page.keyboard.down('Control'); await page.keyboard.press('KeyS'); await page.keyboard.up('Control'); await sleep(600);
+  check('correction without reason is rejected', (await page.$('dialog[open] textarea[name="reason"]')) !== null);
+  await page.type('dialog textarea[name="reason"]', 'خطأ في إدخال نشرة البنك');
+  await page.keyboard.down('Control'); await page.keyboard.press('KeyS'); await page.keyboard.up('Control'); await sleep(1000);
+  const nums = await page.$$eval('dialog[open] .num', (n) => n.map((x) => x.textContent));
+  check('corrected rate is current', nums.includes('48.5') && !nums.includes('48.123456789012'));
+  await clickDlg('سجل التصحيحات'); await sleep(800);
+  const hist = await visibleUi();
+  check('history keeps previous rate and reason', hist.includes('48.123456789012') && hist.includes('خطأ في إدخال نشرة البنك') && hist.includes('حلّ محله تصحيح'));
+  await shot('p2-05-rate-history-ar');
   await page.keyboard.press('Escape');
 
   // ── كل الشاشات الجديدة بالعربية ثم الإنجليزية بلا مفاتيح غير مترجمة ──

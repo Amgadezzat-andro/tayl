@@ -1,6 +1,6 @@
 {
   "name": "tayl-erp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "TAYL — Strategic Accounting | Finance | Cost Solutions",
   "private": true,
   "main": "server/index.js",

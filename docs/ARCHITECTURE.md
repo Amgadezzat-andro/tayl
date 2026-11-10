@@ -1,6 +1,6 @@
 # TAYL — تصميم الهندسة (المراحل 0 و1 و2)
 
-> تحديثات المرحلة 1 موسومة بـ **[م1]** والمرحلة 2 بـ **[م2]**. التفاصيل الكاملة: `PHASE1_REPORT.md` و`DECIMAL_ENGINE.md`.
+> تحديثات المرحلة 1 موسومة بـ **[م1]** والمرحلة 2 بـ **[م2]** ومراجعتها بـ **[0.3.1]**. التفاصيل الكاملة: `PHASE1_REPORT.md` و`PHASE2_REPORT.md` و`REVIEW_0.3.1_REPORT.md` و`DECIMAL_ENGINE.md`.
 
 ## 1. هيكل المجلدات
 
@@ -103,3 +103,14 @@ tayl/
 - **دوال تتحقق منها المستندات القادمة قبل الاعتماد:** `services.fiscal.assertOpen(date)`، `services.accounts.assertPostable(id)`، `services.costCenters.assertUsable(id, ctx)`، `services.treasuries.assertUsable(id, ctx)`، `services.currencies.rateSnapshot(code, date, type)` + `convert()`، `services.paymentTerms.snapshot(id)` + `schedule()`، `services.decimal.snapshot(kind, currency)`. كل لقطة تُحفظ داخل المستند.
 - **الواجهة:** مكونات موحدة `components/{combobox,grid,shortcuts}.js` وشاشة `views/master.js`؛ أي شاشة بيانات رئيسية قادمة = إعداد لـ `TAYL.masterView` بدل كود جديد.
 - **Excel:** `core/xlsx` بلا تبعية؛ `core/import.js` للاستيراد بخطوتين (معاينة ثم حفظ الكل أو لا شيء).
+
+## 9. [0.3.1] قرارات معتمدة للمرحلة 2 (ملزمة للمراحل القادمة)
+| # | القرار | التطبيق |
+|---|---|---|
+| 1 | لا يتغير **العملة الأساسية** بعد تسجيل أي سعر صرف | `financialActivity` ← `exchange-rates` (أي سطر في الجدول)، والأسعار لا تُحذف، فالقفل نهائي |
+| 2 | **تصحيح سعر الصرف** بتسجيل جديد يحفظ السابق وسببه؛ لا حذف | جدول `exchange_rates` إضافة فقط: `entry_kind` (أصلي/تصحيح/إلغاء) + `supersedes_id` + `reason` إلزامي؛ triggers تمنع التعديل والحذف؛ السعر الساري = رأس السلسلة غير الملغى. المستند يحفظ لقطته فلا يتأثر بتصحيح لاحق |
+| 3 | **استيراد Excel يضيف فقط** ولا يعدّل الموجود | `core/import.js`: كود موجود ⇒ `CODE_EXISTS` والملف كله يُرفض |
+| 4 | **الحد الأقصى للشجرة 15 مستوى** | `MAX_DEPTH` في `core/master.js` (الإدخال والنقل والاستيراد) |
+| 5 | **حذف السنة المالية** فقط إن لم تُستخدم وكل فتراتها مفتوحة (وبلا سجل إغلاق) | `fiscal-years`؛ «الاستخدام» عبر `usage.usedBy('fiscal_period', …)` — على وحدة القيود تسجيله |
+
+**المبدأ العام المستفاد للمراحل القادمة:** السجل المالي أو المرجعي الذي قد يكون استُخدم لا يُعدَّل ولا يُحذف؛ التصحيح سطر جديد مرتبط بالسابق بسبب إلزامي (كما في الأسعار هنا، والقيود العكسية في المرحلة 3).
