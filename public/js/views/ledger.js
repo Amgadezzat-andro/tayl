@@ -75,7 +75,9 @@ TAYL.views = TAYL.views || {};
       panel(null, filters.node, el('div', { class: 'form-actions start' }, actions)), out], show };
   }
   const openEntry = (app, r, label) => (r.sourceType === 'journal' && app.can('journal.view')
-    ? el('a', { href: '#/journalEntry?id=' + r.sourceId, dir: 'ltr', text: label }) : el('span', { dir: 'ltr', text: label }));
+    ? el('a', { href: '#/journalEntry?id=' + r.sourceId, dir: 'ltr', text: label })
+    : r.sourceType === 'inventory' && app.can('inventory_documents.view')   // [م6] القيد ← المستند المخزني
+      ? el('a', { href: '#/invDocument?id=' + r.sourceId, dir: 'ltr', text: label }) : el('span', { dir: 'ltr', text: label }));
 
   // ── دفتر اليومية ──
   const jrState = {};

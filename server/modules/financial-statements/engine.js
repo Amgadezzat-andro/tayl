@@ -351,9 +351,9 @@ function createStatements(services) {
     const issues = [];
     if (!cash.length) issues.push({ code: 'NO_CASH_ACCOUNTS' });
     const period = (from, to) => {
-      const mv = sums(sc, "g.posting_date BETWEEN ? AND ? AND g.source_type = 'journal' AND g.entry_kind <> 'opening'", [from, to]).get('total') || new Map();
+      const mv = sums(sc, "g.posting_date BETWEEN ? AND ? AND g.source_type IN ('journal', 'inventory') AND g.entry_kind <> 'opening'", [from, to]).get('total') || new Map();
       const cashBal = (cond, params) => D.sum([...(sums(sc, cond, params).get('total') || new Map())].filter(([id]) => cash.includes(id)).map(([, v]) => v).concat(['0']));
-      const opening = cashBal(`${NOT_CF} AND (g.posting_date < ? OR (g.posting_date BETWEEN ? AND ? AND g.source_type = 'journal' AND g.entry_kind = 'opening'))`, [from, from, to]);
+      const opening = cashBal(`${NOT_CF} AND (g.posting_date < ? OR (g.posting_date BETWEEN ? AND ? AND g.source_type IN ('journal', 'inventory') AND g.entry_kind = 'opening'))`, [from, from, to]);
       const closing = cashBal(`${NOT_CF} AND g.posting_date <= ?`, [to]);
       return { mv, opening, closing };
     };

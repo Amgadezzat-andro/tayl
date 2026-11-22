@@ -41,6 +41,8 @@ const MODULES = [
   require('./modules/year-end'),
   // المرحلة 5: القوائم المالية والتقارير المالية
   require('./modules/financial-statements'),
+  // المرحلة 6: نواة المخزون والمخازن والتقييم
+  require('./modules/inventory'),
 ];
 
 async function createApp({ config, logger, modules = MODULES }) {

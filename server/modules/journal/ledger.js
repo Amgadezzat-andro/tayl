@@ -19,6 +19,10 @@ const { inTransaction } = require('../../core/db');
  * مبالغها الأساسية (لا تحويل جديد، كالعكسي)، وتُرحَّل في فترة مفتوحة أو مغلقة (لا مقفلة نهائيًا)، ولا يُشترط اتزانها
  * بعملة أجنبية واحدة (الأرصدة لا تتقابل بالعملة الأجنبية بالضرورة؛ الاتزان بالعملة الأساسية إلزامي دائمًا).
  * guards: وحدات أخرى تسجّل شروطًا إضافية على كل ترحيل (مثل: السنة مُقفلة لهذا الفرع).
+ *
+ * [م6] origin = 'subledger': قيود الوحدات الفرعية (المخزون). سطورها بالعملة الأساسية بمبالغ محسوبة (لا تحويل)، والحساب
+ * تفصيلي نشط ضمن النطاق (حسابات المراقبة مثل المخزون مسموحة: لا يُشترط allow_manual_entry)، وسياسة مركز التكلفة سارية،
+ * والفترة مفتوحة، وكل الحراس (السنة المُقفلة للفرع) سارية. قيد عادي دائمًا (لا افتتاحي ولا إقفال).
  */
 const pad2 = (n) => String(n).padStart(2, '0');
 /** تاريخ اليوم المحلي للجهاز (للتحقق من التاريخ المستقبلي فقط). */
@@ -69,6 +73,17 @@ function createLedger(services, { today = localToday } = {}) {
   function checkLine(ctx, doc, l, base, origin) {
     const where = { line: l.lineNo };
     if (origin === 'reversal' || origin === 'system') return checkReversalLine(doc, l, base, where);
+    if (origin === 'subledger') {
+      const acc = atLine(l.lineNo, () => services.accounts.assertPostable(l.accountId, ctx));
+      if (acc.cost_center_policy === 'required' && l.costCenterId == null) fail(409, 'COST_CENTER_REQUIRED', 'مركز التكلفة إلزامي لهذا الحساب', { ...where, account: acc.code });
+      if (acc.cost_center_policy === 'none' && l.costCenterId != null) fail(409, 'COST_CENTER_NOT_ALLOWED', 'هذا الحساب لا يقبل مركز تكلفة', { ...where, account: acc.code });
+      if (l.costCenterId != null) {
+        const cc = atLine(l.lineNo, () => services.costCenters.assertUsable(l.costCenterId, ctx));
+        if (cc.branch_id != null && cc.branch_id !== doc.branchId) fail(409, 'COST_CENTER_BRANCH', 'مركز التكلفة يتبع فرعًا آخر', { ...where, costCenter: cc.code });
+      }
+      if (l.currencyId !== base.id || l.rateSource !== 'base') fail(409, 'RATE_SOURCE_INVALID', 'قيد الوحدة الفرعية بالعملة الأساسية فقط', where);
+      return checkReversalLine(doc, l, base, where);
+    }
     // الحساب: تفصيلي نشط (خدمة دليل الحسابات نفسها)، ويقبل القيد اليدوي/الافتتاحي
     const acc = atLine(l.lineNo, () => services.accounts.assertPostable(l.accountId, ctx));
     if (acc.allow_manual_entry !== 1) fail(409, 'MANUAL_ENTRY_NOT_ALLOWED', 'الحساب حساب مراقبة لا يقبل قيدًا يدويًا', { ...where, account: acc.code });
@@ -168,7 +183,8 @@ function createLedger(services, { today = localToday } = {}) {
    */
   function post(ctx, doc) {
     return inTransaction(db, () => {
-      if (!['manual', 'opening', 'reversal', 'system'].includes(doc.origin)) fail(409, 'ENTRY_TYPE_NOT_SUPPORTED', 'نوع الترحيل غير مدعوم');
+      if (!['manual', 'opening', 'reversal', 'system', 'subledger'].includes(doc.origin)) fail(409, 'ENTRY_TYPE_NOT_SUPPORTED', 'نوع الترحيل غير مدعوم');
+      if (doc.origin === 'subledger' && doc.entryKind !== 'normal') fail(409, 'ENTRY_TYPE_NOT_SUPPORTED', 'قيد الوحدة الفرعية قيد عادي فقط');
       if (doc.entryKind === 'closing' && doc.origin !== 'system') fail(409, 'ENTRY_TYPE_NOT_SUPPORTED', 'قيد الإقفال يُنشأ من دورة الإقفال السنوي فقط');
       const base = baseCurrency();
       // الفرع
@@ -188,7 +204,7 @@ function createLedger(services, { today = localToday } = {}) {
       if (!Array.isArray(doc.lines) || doc.lines.length < 2) fail(409, 'TOO_FEW_LINES', 'القيد يحتاج سطرين على الأقل');
 
       const lines = doc.lines.map((l) => checkLine(ctx, doc, l, base, doc.origin));
-      if (doc.origin !== 'reversal' && doc.origin !== 'system') baseAmounts(lines, base);   // العكسي والنظام يحملان المبالغ الأساسية
+      if (!['reversal', 'system', 'subledger'].includes(doc.origin)) baseAmounts(lines, base);   // العكسي والنظام والوحدات الفرعية تحمل المبالغ الأساسية
       const dr = lines.filter((l) => l.side === 'debit');
       const cr = lines.filter((l) => l.side === 'credit');
       const bal = D.balance(dr.map((l) => l.base), cr.map((l) => l.base));

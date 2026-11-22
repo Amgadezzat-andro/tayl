@@ -21,7 +21,7 @@ const serverFiles = files(path.join(ROOT, 'server'), '.js');
 const serverSrc = serverFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 
 test('i18n-ui: كل مفتاح ترجمة حرفي مستخدم في الواجهة موجود باللغتين', () => {
-  const NS = /^(app|support|lang|greeting|status|group|common|setup|auth|session|nav|dash|company|branch|user|role|perm|settings|precision|kind|rounding|audit|account|err|val|currency|accClass|nature|cc|treasury|fiscal|period|pt|pm|unit|combo|grid|keys|import|master|journal|ledger|series|ye|fs)\./;   // [م3] journal/ledger/series؛ [م4] ye
+  const NS = /^(app|support|lang|greeting|status|group|common|setup|auth|session|nav|dash|company|branch|user|role|perm|settings|precision|kind|rounding|audit|account|err|val|currency|accClass|nature|cc|treasury|fiscal|period|pt|pm|unit|combo|grid|keys|import|master|journal|ledger|series|ye|fs|inv)\./;   // [م3] journal/ledger/series؛ [م4] ye؛ [م6] inv
   let n = 0;
   for (const f of jsFiles) {
     const src = fs.readFileSync(f, 'utf8');

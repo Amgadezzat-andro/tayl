@@ -97,8 +97,14 @@ function registerReports(router, services) {
       const m = yeMeta.get(id) || {};
       return { description: m.description, branch_code: m.branch_code, reason: m.reason, entry_type: m.is_reversal ? m.kind + '_reversal' : m.kind, rev_id: m.rev_id, rev_number: m.rev_number };
     };
+    // [م6] قيود المخزون: مرجعها رقم المستند المخزني (للرجوع من القيد إلى المستند)
+    const invMeta = db.prepare(`SELECT d.number, d.doc_type, d.reason, d.notes, b.code branch_code FROM inv_documents d JOIN branches b ON b.id = d.branch_id WHERE d.id = ?`);
+    const inv = (id) => {
+      const m = invMeta.get(id) || {};
+      return { description: m.reason || m.notes || null, branch_code: m.branch_code, reference: m.number, entry_type: 'inventory_' + m.doc_type };
+    };
     const items = docs.slice(0, limit).map((d) => {
-      const m = d.source_type === 'journal' ? meta.get(d.source_id) : ye(d.source_id);
+      const m = d.source_type === 'journal' ? meta.get(d.source_id) : d.source_type === 'inventory' ? inv(d.source_id) : ye(d.source_id);
       return {
         sourceType: d.source_type, sourceId: d.source_id, number: d.doc_number, date: d.posting_date, branchCode: m.branch_code,
         entryType: m.entry_type, description: m.description, reference: m.reference, reason: m.reason,
@@ -142,9 +148,10 @@ function registerReports(router, services) {
     const n = db.prepare(`SELECT count(*) n FROM gl_entries g WHERE ${where} AND g.posting_date BETWEEN ? AND ?`).get(...p, from, to).n;
     if (n > MAX_STATEMENT_ROWS) throw new HttpError(409, 'REPORT_TOO_LARGE', 'الحركات أكثر من حد الكشف؛ ضيّق الفترة', { rows: n, max: MAX_STATEMENT_ROWS });
     // ترتيب محاسبي: تاريخ الترحيل ثم تسلسل الترحيل نفسه (ترتيب كتابة الأستاذ)
-    const rows = db.prepare(`SELECT g.*, a.code account_code, cc.code cc_code, cu.code currency_code, e.reference, e.entry_type
+    const rows = db.prepare(`SELECT g.*, a.code account_code, cc.code cc_code, cu.code currency_code, coalesce(e.reference, iv.number) reference, e.entry_type
       FROM gl_entries g JOIN accounts a ON a.id = g.account_id JOIN currencies cu ON cu.id = g.currency_id
       LEFT JOIN cost_centers cc ON cc.id = g.cost_center_id LEFT JOIN journal_entries e ON g.source_type = 'journal' AND e.id = g.source_id
+      LEFT JOIN inv_documents iv ON g.source_type = 'inventory' AND iv.id = g.source_id
       WHERE ${where} AND g.posting_date BETWEEN ? AND ? ORDER BY g.posting_date, g.id`).all(...p, from, to);
     let bal = D.sub(op.d, op.c);
     let fbal = cur ? D.sub(op.fd, op.fc) : null;

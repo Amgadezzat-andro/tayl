@@ -308,3 +308,23 @@ table.compact td, table.compact th { padding: 4px 8px; }
 .print-meta { margin: 2px 0; font-size: 12px; }
 .fs-table td.fs-indent-1 { padding-inline-start: 26px; }
 .fs-table td.fs-indent-2 { padding-inline-start: 44px; }
+/* [م6] المخزون */
+.inv-alert { border: 1px solid var(--line, #d9dee8); border-inline-start: 4px solid var(--gold, #c9a227); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+.inv-alert.high { border-inline-start-color: #c0392b; }
+.inv-alert.low { border-inline-start-color: #8a94a6; }
+.inv-alert h3 { margin: 0 0 6px; font-size: 15px; }
+.inv-alert ul { margin: 0; padding-inline-start: 18px; }
+.inv-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 16px; }
+.inv-links a { margin-inline-end: 6px; }
+.inv-lines td { vertical-align: top; }
+.inv-lines input, .inv-lines select { width: 100%; min-width: 70px; }
+.inv-lines .cb-cell { min-width: 220px; }
+.inv-newbatch { display: grid; grid-template-columns: 1fr; gap: 4px; margin-top: 4px; }
+.inv-newbatch[hidden], .inv-batch[hidden] { display: none; }
+.inv-entry { display: inline-flex; gap: 4px; align-items: center; }
+.inv-filter { display: inline-flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.inv-filter .cb { min-width: 200px; }
+@media (max-width: 640px) {
+  .inv-lines .cb-cell { min-width: 160px; }
+  .inv-filter, .inv-filter .cb { width: 100%; min-width: 0; }
+}

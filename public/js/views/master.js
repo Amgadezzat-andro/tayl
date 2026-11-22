@@ -28,7 +28,8 @@ TAYL.masterView = (cfg) => {
   }
 
   async function render(root, app) {
-    const can = (a) => app.can(`${R}.${a}`);
+    // [م6] cfg.perms: صلاحية مختلفة لإجراء (مثل: كل التعديلات بصلاحية إدارة واحدة)، أو false لإخفائه
+    const can = (a) => { const p = cfg.perms && a in cfg.perms ? cfg.perms[a] : `${R}.${a}`; return !!p && app.can(p); };
     const canEdit = can('update');
     const search = el('input', { type: 'search', class: 'search', id: 'page-search', placeholder: t('common.searchHint'), 'aria-label': t('common.search'), value: state.q });
     const filterEls = (cfg.filters || []).map((fl) => {
@@ -112,7 +113,7 @@ TAYL.masterView = (cfg) => {
     await load();
   }
 
-  return { key: cfg.key, perm: `${R}.view`, render };
+  return { key: cfg.key, perm: (cfg.perms && cfg.perms.view) || `${R}.view`, render };
 };
 
 /** خيارات نعم/لا وحقول شائعة */
