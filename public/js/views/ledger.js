@@ -37,6 +37,11 @@ TAYL.views = TAYL.views || {};
     year.addEventListener('change', () => { const y = years.find((x) => String(x.id) === year.value); if (y) { from.value = y.startDate; to.value = y.endDate; } });
     const branches = app.session.branches;
     const branch = el('select', { 'aria-label': t('journal.branch') }, [el('option', { value: 'all', text: t('ledger.allBranches') }), ...branches.map((b) => el('option', { value: String(b.id), text: `${b.code} — ${name(b)}` }))]);
+    // [م5] مجموعة فروع قادمة من القوائم المالية (1,3): خيار خاص بها حتى لا يتحول النطاق إلى «كل الفروع» بصمت
+    if (state.branch && state.branch.includes(',')) {
+      const ids = state.branch.split(',');
+      branch.append(el('option', { value: state.branch, text: branches.filter((b) => ids.includes(String(b.id))).map((b) => b.code).join(t('common.listSep')) }));
+    }
     branch.value = state.branch || 'all';
     let cc = null;
     if (costCenter) cc = TAYL.combobox.create({ source: TAYL.combobox.lookupSource('/api/cost-centers'), value: state.cc || null, label: t('ledger.costCenter'), placeholderKey: 'ledger.anyCostCenter' });
@@ -121,14 +126,16 @@ TAYL.views = TAYL.views || {};
     key: 'nav.accountStatement', perm: 'ledger.view',
     async render(root, app) {
       const p = params();
-      if (p.get('accountId')) { stState.account = { id: Number(p.get('accountId')), label: p.get('label') || p.get('accountId') }; stState.from = p.get('from') || stState.from; stState.to = p.get('to') || stState.to; stState.branch = p.get('branch') || stState.branch; }
+      if (p.get('accountId')) { stState.account = { id: Number(p.get('accountId')), label: p.get('label') || p.get('accountId') }; stState.from = p.get('from') || stState.from; stState.to = p.get('to') || stState.to; stState.branch = p.get('branch') || stState.branch; stState.excludeClosing = p.get('excludeClosing') === '1'; }
       const account = TAYL.combobox.create({ source: TAYL.combobox.lookupSource('/api/accounts'), value: stState.account || null, label: t('ledger.account'), required: true });
       const curList = (await api.get('/api/currencies/lookup?limit=50').catch(() => ({ items: [] }))).items;
       const currency = el('select', { 'aria-label': t('ledger.currency') }, [el('option', { value: '', text: t('ledger.allCurrencies') }), ...curList.map((c) => el('option', { value: String(c.id), text: c.code }))]);
       currency.value = stState.currency || '';
-      const filters = await filterBar(app, stState, { costCenter: true, extra: [el('div', { class: 'cb-inline wide' }, account.node), currency] });
+      const preClose = el('input', { type: 'checkbox', id: 'st-pre-close' }); preClose.checked = !!stState.excludeClosing;   // [م5]
+      const filters = await filterBar(app, stState, { costCenter: true, extra: [el('div', { class: 'cb-inline wide' }, account.node), currency,
+        el('label', { class: 'check', for: 'st-pre-close' }, preClose, ' ', t('ledger.excludeClosing'))] });
       const baseRead = filters.read;
-      filters.read = () => { const q = baseRead(); stState.account = account.value; stState.currency = currency.value; if (account.value) q.set('accountId', String(account.value.id)); if (currency.value) q.set('currencyId', currency.value); return q; };
+      filters.read = () => { const q = baseRead(); stState.account = account.value; stState.currency = currency.value; if (account.value) q.set('accountId', String(account.value.id)); if (currency.value) q.set('currencyId', currency.value); stState.excludeClosing = preClose.checked; if (stState.excludeClosing) q.set('excludeClosing', '1'); return q; };
       const shell = reportShell(app, 'nav.accountStatement', 'ledger.view', {
         url: '/api/ledger/statement', file: 'account-statement', filters, intro: 'ledger.statementIntro',
         async run(q) {

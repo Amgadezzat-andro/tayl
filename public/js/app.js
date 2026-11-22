@@ -15,6 +15,7 @@
     { group: 'nav.group.reference', items: ['paymentTerms', 'paymentMethods', 'units'] },
     // المرحلة 3: القيود والأستاذ العام وتقاريره
     { group: 'nav.group.ledger', items: ['journal', 'openingEntries', 'journalRegister', 'accountStatement', 'trialBalance', 'yearEnd', 'yearEndReports', 'documentSeries'] },
+    { group: 'nav.group.reports', items: ['financialStatements', 'fsSettings'] },   // [م5]
     { group: 'nav.group.admin', items: ['company', 'branches', 'users', 'roles', 'settings', 'audit'] },
     { group: null, items: ['account'] },
   ];

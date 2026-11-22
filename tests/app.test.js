@@ -23,7 +23,9 @@ test('app: أول تشغيل ينشئ القاعدة والجداول بلا ن�
     // المرحلة 3
     'numbering/0001_numbering', 'journal/0001_journal_ledger', 'journal/0002_opening_and_controls',
     // المرحلة 4
-    'year-end/0001_year_end']);
+    'year-end/0001_year_end',
+    // المرحلة 5
+    'financial-statements/0001_fs_classification']);
   assert.equal(app.preMigrationBackup, null);
   assert.equal(app.db.prepare("SELECT value FROM app_meta WHERE key='app_id'").get().value, 'TAYL');
   await app.close();

@@ -40,12 +40,20 @@ function createAccessLoader({ db, permissions }) {
       /** فروع نشطة مصرح بها — تُستخدم لاختيار الفرع الحالي وللمستندات الجديدة. */
       operationalBranchIds: () => activeBranches.all().map((r) => r.id).filter(branchAllowed),
       /**
-       * نطاق التقارير: 'all' (أو بلا قيمة) = كل الفروع المصرح بها، أو معرّف فرع واحد بعد التحقق منه.
+       * نطاق التقارير: 'all' (أو بلا قيمة) = كل الفروع المصرح بها، أو معرّف فرع واحد بعد التحقق منه،
+       * أو [م5] مجموعة فروع «1,3,4» (كل فرع يُتحقق منه؛ لا تكرار).
        * يعيد { all: true } لمن يملك جميع الفروع، أو { all: false, ids: [...] }.
        */
       scope(requested) {
         if (requested === undefined || requested === null || requested === '' || requested === 'all') {
           return allBranches ? { all: true, ids: null } : { all: false, ids: [...explicit] };
+        }
+        if (typeof requested === 'string' && requested.includes(',')) {
+          const parts = requested.split(',');
+          if (parts.length > 200 || !parts.every((x) => /^[1-9]\d{0,15}$/.test(x))) throw new HttpError(400, 'BAD_BRANCH', 'معرّف فرع غير صالح');
+          const ids = [...new Set(parts.map(Number))].sort((a, b) => a - b);
+          for (const id of ids) access.assertBranch(id);
+          return { all: false, ids };
         }
         const id = typeof requested === 'number' ? requested : (/^[1-9]\d{0,15}$/.test(String(requested)) ? Number(requested) : NaN);
         if (!Number.isSafeInteger(id)) throw new HttpError(400, 'BAD_BRANCH', 'معرّف فرع غير صالح');

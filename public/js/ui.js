@@ -273,6 +273,7 @@ TAYL.ui = (() => {
     const area = document.getElementById('print-area');
     fill(area,
       el('h1', { text: d.title }),
+      (d.meta || []).map((m) => el('p', { class: 'print-meta', text: m })),   // [م5] الشركة والنطاق والفترة والعملة والحالة
       el('p', { class: 'muted', text: dateTime(Date.now()) }),
       el('table', { class: 'data' }, el('thead', null, el('tr', null, d.columns.map((c) => el('th', { text: c })))),
         el('tbody', null, d.rows.map((r) => el('tr', null, r.map((c) => el('td', { text: c })))))));

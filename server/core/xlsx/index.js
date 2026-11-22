@@ -108,13 +108,18 @@ function writeSheet({ sheetName = 'Sheet1', header, rows, rtl = false, widths })
   const cols = header.length;
   const cell = (r, c, v, style) => {
     if (v === null || v === undefined || v === '') return '';
+    // [م5] خلية رقمية { num: '1234.56' }: النص العشري القانوني يُكتب كما هو (بلا تحويل إلى Number فلا فقد دقة)
+    if (typeof v === 'object' && typeof v.num === 'string') {
+      if (!/^-?(0|[1-9]\d*)(\.\d+)?$/.test(v.num)) throw new Error('قيمة رقمية غير صالحة للتصدير');
+      return `<c r="${colName(c)}${r}"${style ? ` s="${style}"` : ''}><v>${v.num}</v></c>`;
+    }
     return `<c r="${colName(c)}${r}" t="inlineStr"${style ? ` s="${style}"` : ''}><is><t xml:space="preserve">${encodeXml(v)}</t></is></c>`;
   };
   const sheetRows = [
     `<row r="1">${header.map((h, c) => cell(1, c, h, 1)).join('')}</row>`,
     ...rows.map((r, i) => `<row r="${i + 2}">${r.slice(0, cols).map((v, c) => cell(i + 2, c, v)).join('')}</row>`),
   ];
-  const w = widths || header.map((h, c) => Math.min(60, Math.max(8, String(h).length + 2, ...rows.slice(0, 500).map((r) => String(r[c] ?? '').length + 2))));
+  const w = widths || header.map((h, c) => Math.min(60, Math.max(8, String(h).length + 2, ...rows.slice(0, 500).map((r) => String(r[c] && typeof r[c] === 'object' ? r[c].num : r[c] ?? '').length + 2))));
   const safeName = String(sheetName).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31) || 'Sheet1';
   const ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
   const rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';

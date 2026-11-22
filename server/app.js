@@ -39,6 +39,8 @@ const MODULES = [
   require('./modules/journal'),
   // المرحلة 4: الإقفال السنوي وترحيل الأرصدة للسنة التالية
   require('./modules/year-end'),
+  // المرحلة 5: القوائم المالية والتقارير المالية
+  require('./modules/financial-statements'),
 ];
 
 async function createApp({ config, logger, modules = MODULES }) {

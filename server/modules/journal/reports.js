@@ -63,7 +63,11 @@ function registerReports(router, services) {
   }
   const branchLabel = (ctx, q) => {
     if (!q.branch || q.branch === 'all') return null;
-    return db.prepare('SELECT code, name_ar nameAr, name_en nameEn FROM branches WHERE id = ?').get(Number.parseInt(q.branch, 10)) || null;
+    // [م5] مجموعة فروع: الأكواد والأسماء مجمّعة (النطاق نفسه تحقق منه sqlFilter)
+    const ids = String(q.branch).split(',').map((x) => Number.parseInt(x, 10));
+    const rows = ids.map((id) => db.prepare('SELECT code, name_ar nameAr, name_en nameEn FROM branches WHERE id = ?').get(id)).filter(Boolean);
+    if (!rows.length) return null;
+    return rows.length === 1 ? rows[0] : { code: rows.map((r) => r.code).join(', '), nameAr: rows.map((r) => r.nameAr).join('، '), nameEn: rows.map((r) => r.nameEn).join(', ') };
   };
 
   // ── دفتر اليومية ──
@@ -125,6 +129,8 @@ function registerReports(router, services) {
     const ids = acc.is_group ? db.prepare("SELECT id FROM accounts WHERE path LIKE ? AND is_group = 0").all(acc.path + '%').map((r) => r.id) : [acc.id];
     const s = scope(ctx, q);
     const w = [s.sql, NOT_CF, `g.account_id IN (${ids.length ? ids.map(() => '?').join(',') : 'NULL'})`]; const p = [...s.params, ...ids];
+    // [م5] كشف قبل الإقفال (مطابق لبند قائمة الدخل): بلا قيود الإقفال وعكسها
+    if (q.excludeClosing === '1') w.push("g.entry_kind <> 'closing'");
     let cur = null;
     if (q.currencyId) {
       cur = db.prepare('SELECT id, code FROM currencies WHERE id = ?').get(Number.parseInt(q.currencyId, 10));
@@ -157,7 +163,7 @@ function registerReports(router, services) {
     const mv = { d: D.canonical(D.sum(rows.map((r) => r.debit).concat(['0']))), c: D.canonical(D.sum(rows.map((r) => r.credit).concat(['0']))) };
     return {
       account: { id: acc.id, code: acc.code, nameAr: acc.name_ar, nameEn: acc.name_en, isGroup: acc.is_group === 1, normalBalance: acc.normal_balance },
-      from, to, baseCurrency: base(), currency: cur ? cur.code : null, branch: branchLabel(ctx, q),
+      from, to, baseCurrency: base(), currency: cur ? cur.code : null, branch: branchLabel(ctx, q), excludeClosing: q.excludeClosing === '1',
       opening: split(D.sub(op.d, op.c)), ...(cur ? { openingFc: split(D.sub(op.fd, op.fc), cur.code) } : {}),
       rows: out,
       totals: { debit: mv.d, credit: mv.c, debitText: fmt(mv.d), creditText: fmt(mv.c) },
@@ -255,6 +261,8 @@ function registerReports(router, services) {
     },
   };
   const REPORTS = { journal: journalRegister, statement, 'trial-balance': trialBalance };
+  // [م5] القوائم المالية تطابق نتائجها مع ميزان المراجعة وكشف الحساب نفسيهما (لا محرك أرصدة مكرر)
+  services.ledgerReports = { trialBalance, statement, journalRegister, range };
   const TABLE_OF = { journal: 'journal', statement: 'statement', 'trial-balance': 'trialBalance' };
   function tabular(ctx, name, lang) {
     const r = REPORTS[name](ctx, { ...ctx.query, ...(name === 'journal' ? { limit: '500', offset: '0' } : {}) });
